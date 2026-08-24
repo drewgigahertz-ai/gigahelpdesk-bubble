@@ -716,7 +716,8 @@ function extractTicketSla(html) {
   const firstResponseCard = cards.find(card => card.label === 'first response');
   const resolutionCard = cards.find(card => card.label === 'resolution');
   const firstResponseComplete = !!(firstResponseCard &&
-    /(?:completed|met|sent|responded)/i.test(firstResponseCard.text));
+    /(?:completed|met|sent|responded)/i.test(firstResponseCard.text)) ||
+    /ticket-thread-item(?![^>]*\bis-system\b)/i.test(html);
   return {
     details: {
       ticket_number: ticketNumber,
@@ -767,6 +768,7 @@ function makeSlaAlerts(items, slaByUrl) {
       ['resolution', 'Resolution SLA is close to overdue', sla.resolutionDue, sla.resolutionDurationMs]
     ];
     checks.forEach(([kind, title, parsedDue, durationMs]) => {
+      if (kind === 'first_response' && sla.firstResponseComplete) return;
       const start = sla.createdAt || (item.created_at ? new Date(item.created_at) : null);
       const due = parsedDue || (start && durationMs ? addBusinessDuration(start, durationMs) : null);
       if (!due || !start || Number.isNaN(start.getTime()) || due <= start) return;
