@@ -1,0 +1,44 @@
+{
+  "name": "gigahelpdesk-bubble",
+  "version": "1.0.0",
+  "description": "Always-on-top desktop bubble overlay for GigaHelpDesk notifications",
+  "main": "main.js",
+  "scripts": {
+    "start": "electron .",
+    "dist": "electron-builder"
+  },
+  "devDependencies": {
+    "electron": "^31.0.0",
+    "electron-builder": "^24.13.3"
+  },
+  "build": {
+    "appId": "com.gigahertz.gigahelpdeskbubble",
+    "productName": "GigaHelpDesk Bubble",
+    "win": {
+      "target": "nsis",
+      "icon": "icon.ico",
+      "signAndEditExecutable": false
+    },
+    "publish": {
+      "provider": "github",
+      "owner": "drewgigahertz-ai",
+      "repo": "gigahelpdesk-bubble",
+      "releaseType": "release"
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true
+    },
+    "files": [
+      "main.js",
+      "preload.js",
+      "bubble.html",
+      "bubble-icon.png",
+      "icon.png",
+      "ticket-view/**/*"
+    ]
+  },
+  "dependencies": {
+    "electron-updater": "^6.3.9"
+  }
+}

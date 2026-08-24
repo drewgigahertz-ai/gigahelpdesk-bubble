@@ -1,0 +1,1660 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Sora:wght@400;600;700&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #ffffff; --bg2: #f8f9fa; --bg3: #f1f3f5;
+    --text: #1a1a1a; --text2: #6b7280;
+    --border: rgba(0,0,0,0.12); --border2: rgba(0,0,0,0.22);
+    --radius: 8px; --radius-lg: 14px;
+    --green: #22c55e; --red: #ef4444;
+    --accent: #1d4ed8; /* user-customizable theme color */
+    --bubble-size: 90px;
+    --ring-pad: 12px;
+  }
+  * { box-sizing: border-box; margin:0; padding:0; }
+  html, body { width:100%; height:100%; background: transparent; overflow: hidden;
+    font-family:'Sora', sans-serif; color: var(--text); user-select: none; }
+
+  #bubble {
+    position: absolute; top: var(--ring-pad); right: var(--ring-pad); left: auto;
+    width: var(--bubble-size); height: var(--bubble-size);
+    border-radius: 50%;
+    background: transparent;
+    box-shadow: 0 0 0 2.5px rgba(148,163,184,0.7);
+    display:flex; align-items:center; justify-content:center;
+    cursor: grab; touch-action:none;
+    transition: box-shadow 0.3s;
+  }
+  #bubble:active { cursor: grabbing; }
+
+  #bubble.conn-good { animation: bubbleConnGood 1.4s ease-in-out infinite alternate; }
+  @keyframes bubbleConnGood {
+    from { box-shadow: 0 0 0 5px rgba(34,197,94,0.55); }
+    to   { box-shadow: 0 0 0 7px rgba(34,197,94,0.95); }
+  }
+  #bubble.conn-bad { animation: bubbleConnBad 1s ease-in-out infinite alternate; }
+  @keyframes bubbleConnBad {
+    from { box-shadow: 0 0 0 5px rgba(239,68,68,0.5); }
+    to   { box-shadow: 0 0 0 7px rgba(239,68,68,0.9); }
+  }
+
+  #bubble.ringing { animation: bubbleRing 0.7s ease-in-out infinite alternate; }
+  @keyframes bubbleRing {
+    from { box-shadow: 0 0 0 5px rgba(239,68,68,0.5); }
+    to   { box-shadow: 0 0 0 8px rgba(239,68,68,0.9); }
+  }
+  #bubbleIconWrap {
+    width: calc(var(--bubble-size) * 0.94); height: calc(var(--bubble-size) * 0.94);
+    border-radius: 50%; background: rgba(255,255,255,0.55); display:flex; align-items:center; justify-content:center; overflow:hidden;
+    pointer-events: none; -webkit-user-drag: none;
+  }
+  #bubbleIcon {
+    width: 96%; height: 96%; object-fit: contain; pointer-events: none; -webkit-user-drag: none; user-select: none;
+    transform-origin: center center;
+    animation: iconPop 2.6s ease-in-out infinite;
+  }
+  @keyframes iconPop {
+    0%, 100% { transform: scale(1); }
+    50% { transform: scale(1.1); }
+  }
+  /* A stronger one-shot pop, restarted (via JS re-adding the class) every
+     time a new notification actually arrives — separate from the gentle
+     idle loop above so a real event still stands out. */
+  #bubbleIcon.pop-burst { animation: iconPopBurst 0.5s cubic-bezier(.34,1.56,.64,1); }
+  @keyframes iconPopBurst {
+    0%   { transform: scale(1); }
+    40%  { transform: scale(1.35); }
+    70%  { transform: scale(0.92); }
+    100% { transform: scale(1); }
+  }
+
+  .conn-dot-lbl { display:inline-block; width:7px; height:7px; border-radius:50%; margin-right:4px; vertical-align:middle; background:#94a3b8; }
+  .conn-dot-lbl.connected { background: var(--green); }
+  .conn-dot-lbl.disconnected { background: var(--red); animation: connFlash 1s ease-in-out infinite; }
+  @keyframes connFlash { 0%,100%{opacity:1;} 50%{opacity:0.35;} }
+
+  #bubbleBadge {
+    position:absolute; width:20px; height:20px;
+    left: calc(var(--bubble-size) * 0.8536 - 10px);
+    top: calc(var(--bubble-size) * 0.1464 - 10px);
+    border-radius:999px; background: var(--red); color:#fff; font-family:'DM Mono',monospace;
+    font-size:11px; font-weight:700; display:none; align-items:center; justify-content:center;
+    border:2px solid #fff;
+  }
+  #bubbleBadge.visible { display:flex; }
+  #bubbleBadge.pop-burst { animation: badgePop 0.45s cubic-bezier(.34,1.56,.64,1); }
+  @keyframes badgePop {
+    0%   { transform: scale(0.3); }
+    60%  { transform: scale(1.25); }
+    100% { transform: scale(1); }
+  }
+  #resizeHandle {
+    position:absolute; width:16px; height:16px; border-radius:50%;
+    left: calc(var(--bubble-size) * 0.8536 - 8px);
+    top: calc(var(--bubble-size) * 0.8536 - 8px);
+    background:#fff; border:2px solid var(--accent); cursor: nwse-resize;
+  }
+  #panelResizeHandle {
+    position:absolute; right:0; bottom:0; width:20px; height:20px;
+    cursor: nwse-resize; z-index: 6; touch-action:none;
+  }
+  #panelResizeHandle::after {
+    content:''; position:absolute; right:5px; bottom:5px; width:9px; height:9px;
+    border-right:2px solid var(--border2); border-bottom:2px solid var(--border2);
+  }
+
+  #previewStack {
+    position:absolute; left:6px; top:50%; transform: translateY(-50%);
+    width: 168px; display:none; flex-direction: column; gap: 6px;
+  }
+  .preview-card {
+    background: rgba(255,255,255,0.95); border-radius: 12px;
+    box-shadow: 0 8px 22px rgba(0,0,0,0.28);
+    padding: 8px 28px 8px 10px;
+    border-left: 4px solid var(--accent);
+    font-family: 'Sora', sans-serif;
+    animation: previewFadeIn 0.22s ease-out;
+    position: relative;
+    height: 64px;
+    box-sizing: border-box;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    overflow: hidden;
+  }
+  @keyframes previewFadeIn { from { opacity:0; transform: scale(0.9); } to { opacity:1; transform: scale(1); } }
+  .pc-title, .pc-message {
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  }
+  .pc-title   { font-size:12px; font-weight:700; color: var(--text); margin-bottom:3px; line-height:1.2; }
+  .pc-message { font-size:10px; color: var(--text2); }
+  .pc-dismiss {
+    position:absolute; top:6px; right:6px; width:16px; height:16px;
+    border:none; background:none; cursor:pointer; padding:0;
+    font-size:13px; line-height:1; color: var(--text2); opacity:0.55;
+    display:flex; align-items:center; justify-content:center;
+  }
+  .pc-dismiss:hover { opacity:1; color: var(--red); }
+  .pc-timer-bar {
+    position:absolute; left:0; bottom:0; height:3px; width:100%;
+    background: rgba(0,0,0,0.06); overflow:hidden;
+  }
+  .pc-timer-fill {
+    height:100%; background: var(--accent); width:100%;
+    transition: width 0.2s linear;
+  }
+
+  #panel {
+    position:absolute; top:0; left:0; width:100%; height:100%;
+    background: var(--bg); border-radius: var(--radius-lg);
+    box-shadow: 0 10px 34px rgba(0,0,0,0.3);
+    display:none; flex-direction:column; overflow:hidden;
+  }
+  #panel.open { display:flex; }
+  #panel.panel-entering { animation: panelEnter 220ms cubic-bezier(.2,.8,.2,1) both; }
+  @keyframes panelEnter { from { opacity:0; transform:scale(0.88) translateY(10px); } to { opacity:1; transform:scale(1) translateY(0); } }
+  #panel.panel-exiting { display:flex; animation: panelExit 180ms ease-in forwards; pointer-events:none; }
+  @keyframes panelExit { from { opacity:1; transform:scale(1); } to { opacity:0; transform:scale(0.92); } }
+  #bubble.bubble-exiting { animation: bubbleExit 180ms ease-in forwards; pointer-events:none; }
+  @keyframes bubbleExit { from { opacity:1; transform:scale(1); } to { opacity:0; transform:scale(0.72); } }
+  .panel-header { display:flex; align-items:center; justify-content:space-between; padding:10px 12px;
+    border-bottom:0.5px solid var(--border); background: var(--bg2); cursor: grab; }
+  .panel-header:active { cursor: grabbing; }
+  .panel-title { font-size:12px; font-weight:700; }
+  #ticketBackBtn { margin-right:6px; }
+  .panel-header-btns { display:flex; gap:4px; }
+  .icon-btn { width:26px; height:26px; border-radius:6px; border:0.5px solid var(--border2);
+    background: var(--bg); cursor:pointer; font-size:12px; display:flex; align-items:center; justify-content:center; }
+  .icon-btn:hover { background: var(--bg3); }
+
+  .alarm-strip { display:none; align-items:center; justify-content:space-between; background:#fee2e2;
+    border-bottom:0.5px solid #fca5a5; padding:6px 10px; font-size:10px; color:#b91c1c; font-weight:700; }
+  .alarm-strip.visible { display:flex; }
+  .alarm-strip button { font-size:9px; font-weight:700; padding:3px 8px; background:#dc2626; color:#fff;
+    border:none; border-radius:999px; cursor:pointer; }
+
+  #panelScroll { flex:1; overflow-y:auto; min-height:0; display:flex; flex-direction:column; position:relative; }
+  .panel-body { padding:8px; }
+  .empty-state { text-align:center; color: var(--text2); font-size:11px; padding:24px 10px; font-family:'DM Mono',monospace; }
+
+  .alert-card { background: var(--bg2); border:0.5px solid var(--border); border-radius: var(--radius);
+    padding:9px 10px; margin-bottom:6px; position:relative; overflow:hidden; }
+  .alert-card::before { content:''; position:absolute; left:0; top:0; bottom:0; width:3px;
+    background: var(--accent); border-radius:3px 0 0 3px; }
+  .alert-card.read::before { background: #cbd5e1; }
+  .alert-card.ringing { box-shadow: 0 0 0 2px rgba(239,68,68,0.3); }
+  .ac-top { display:flex; align-items:flex-start; justify-content:space-between; gap:6px; margin-bottom:4px; }
+  .ac-badge { font-size:9px; font-weight:700; padding:2px 7px; border-radius:999px; text-transform:uppercase; letter-spacing:0.03em; }
+  .badge-new  { background:#dbeafe; color:#1d4ed8; }
+  .badge-read { background:#f1f5f9; color:#64748b; }
+  .ac-actions { display:flex; align-items:center; gap:5px; }
+  .ac-dismiss { background:none; border:none; cursor:pointer; opacity:0.5; font-size:13px; }
+  .ac-dismiss:hover { opacity:1; }
+  .ac-stop { font-size:9px; font-weight:700; padding:2px 7px; background:#dc2626; color:#fff; border:none; border-radius:999px; cursor:pointer; }
+  .ac-title { font-size:12px; font-weight:700; margin-bottom:2px; word-break:break-word; }
+  .ac-message { font-size:10.5px; color: var(--text2); margin-bottom:5px; word-break:break-word; }
+  .ac-details { display:flex; flex-wrap:wrap; gap:4px 8px; margin:4px 0 6px; }
+  .ac-detail { font-size:9px; color:var(--text2); background:var(--bg3); border-radius:4px; padding:2px 5px; }
+  .ac-meta { display:flex; align-items:center; justify-content:space-between; gap:8px; font-family:'DM Mono',monospace; font-size:9.5px; color: var(--text2); }
+  .ac-meta span { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .ac-open { flex-shrink:0; font-size:9.5px; font-weight:700; padding:3px 8px; background: var(--accent); color:#fff; border:none; border-radius:999px; cursor:pointer; }
+  .ac-open-ext { flex-shrink:0; width:20px; height:20px; font-size:10px; line-height:1; padding:0; background: var(--bg); color: var(--text2);
+    border:0.5px solid var(--border2); border-radius:50%; cursor:pointer; display:flex; align-items:center; justify-content:center; }
+  .ac-open-ext:hover { background: var(--bg3); color: var(--text); }
+  .sla-overdue { border-color:#fca5a5; background:#fff1f2; }
+  .sla-countdown { font-size:10px; font-family:'DM Mono',monospace; font-weight:700; color:#b91c1c; margin:4px 0; }
+  .sla-warning-countdown { color:#a16207; }
+  .sound-manage-btn { font-size:9px; padding:3px 6px; border:0.5px solid var(--border2); border-radius:5px; background:var(--bg); cursor:pointer; }
+  .sound-manage-btn:hover { background:var(--bg3); }
+  .sound-delete-btn { color:#b91c1c; }
+  #customSoundLibrary { margin:6px 0 8px; }
+  .custom-sound-row { display:flex; align-items:center; gap:5px; margin:4px 0; font-size:10px; }
+  .custom-sound-row span { flex:1; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+
+  #settingsDrawer { display:none; border-top:0.5px solid var(--border); padding:10px; background: var(--bg2); position:sticky; bottom:0; z-index:20; overflow:visible; box-shadow:0 -4px 12px rgba(0,0,0,0.08); }
+  #settingsDrawer.open { display:block; }
+  #settingsDrawer, #settingsDrawer * { user-select:auto; }
+  #settingsDrawer select, #settingsDrawer input, #settingsDrawer button { pointer-events:auto; }
+  .sd-row { display:flex; align-items:center; justify-content:space-between; gap:8px; margin-bottom:8px; }
+  .sd-lbl { font-size:10px; color: var(--text2); min-width:62px; }
+  .sd-row select { flex:1; min-width:0; font-size:11px; padding:4px 6px; border-radius:6px; border:0.5px solid var(--border2); position:relative; z-index:21; }
+  .sd-row select:focus { outline:1.5px solid var(--accent); }
+  .sd-row input[type=range] { flex:1; accent-color: var(--accent); }
+  .sd-val { font-size:10px; font-family:'DM Mono',monospace; color: var(--text2); min-width:34px; text-align:right; }
+  .mode-row { display:flex; align-items:center; justify-content:space-between; background: var(--bg3);
+    border:0.5px solid var(--border); border-radius:6px; padding:6px 9px; margin-bottom:8px; }
+  .mode-lbl { font-size:10px; font-weight:600; }
+  .mode-desc { font-size:9px; color: var(--text2); word-break:break-word; }
+  .toggle-switch { position:relative; width:34px; height:20px; flex-shrink:0; }
+  .toggle-switch input { opacity:0; width:0; height:0; }
+  .toggle-slider { position:absolute; inset:0; background:#cbd5e1; border-radius:999px; cursor:pointer; transition: background 0.2s; }
+  .toggle-slider::before { content:''; position:absolute; width:14px; height:14px; border-radius:50%; background:#fff; left:3px; top:3px; transition: transform 0.2s; }
+  .toggle-switch input:checked + .toggle-slider { background: var(--red); }
+  .toggle-switch input:checked + .toggle-slider::before { transform: translateX(14px); }
+  .drop-zone { border:1.5px dashed var(--border2); border-radius:6px; padding:10px; text-align:center; cursor:pointer;
+    position:relative; background: var(--bg); margin-bottom:6px; font-size:10px; color: var(--text2); }
+  .drop-zone input[type=file] { position:absolute; inset:0; opacity:0; cursor:pointer; width:100%; height:100%; }
+  .last-check { font-size:9px; color: var(--text2); font-family:'DM Mono',monospace; text-align:center; padding:6px 0 8px; }
+
+  .theme-row { display:flex; align-items:center; gap:6px; flex-wrap:wrap; margin-bottom:8px; }
+  .theme-swatch { width:20px; height:20px; border-radius:50%; border:2px solid transparent; cursor:pointer; flex-shrink:0; }
+  .theme-swatch.active { border-color: var(--text); box-shadow: 0 0 0 2px #fff, 0 0 0 3px var(--text); }
+  .theme-custom-wrap { position:relative; width:20px; height:20px; flex-shrink:0; }
+  .theme-custom-wrap input[type=color] { position:absolute; inset:0; width:100%; height:100%; padding:0; border:2px dashed var(--border2); border-radius:50%; cursor:pointer; background:none; }
+
+  .clear-all-btn { font-size:9px; font-weight:700; padding:4px 9px; background: var(--bg); color: var(--text2);
+    border:0.5px solid var(--border2); border-radius:999px; cursor:pointer; }
+  .clear-all-btn:hover { background:#fee2e2; color:#b91c1c; border-color:#fca5a5; }
+
+  /* ── Login view ── */
+  #loginView { display:none; flex-direction:column; padding:22px 18px; }
+  .login-logo { width:68px; height:68px; margin:0 auto 10px; display:block; object-fit:contain; }
+  .login-title { font-size:14px; font-weight:700; text-align:center; margin-bottom:2px; }
+  .login-sub { font-size:10.5px; color: var(--text2); text-align:center; margin-bottom:16px; }
+  .login-field-lbl { font-size:10px; color: var(--text2); font-weight:600; margin-bottom:4px; display:block; }
+  .login-field { margin-bottom:12px; }
+  .login-field input[type=email], .login-field input[type=password] {
+    width:100%; padding:8px 9px; font-size:12px; border-radius:6px; border:0.5px solid var(--border2);
+    font-family:'Sora', sans-serif;
+  }
+  .login-field input:focus { outline: 1.5px solid var(--accent); }
+  .remember-row { display:flex; align-items:center; gap:6px; font-size:10.5px; color: var(--text2); margin-bottom:14px; }
+  .remember-row input { accent-color: var(--accent); }
+  .login-btn { width:100%; padding:9px; font-size:12px; font-weight:700; color:#fff; background: var(--accent);
+    border:none; border-radius:8px; cursor:pointer; }
+  .login-btn:hover { filter: brightness(1.08); }
+  .login-btn:disabled { opacity:0.6; cursor:default; }
+  .login-msg { font-size:10.5px; margin-top:9px; text-align:center; min-height:14px; }
+</style>
+</head>
+<body>
+
+<div id="previewStack"></div>
+
+<div id="bubble" title="Drag to move, click to open">
+  <div id="bubbleIconWrap"><img id="bubbleIcon" src="bubble-icon.png" alt="logo" draggable="false"></div>
+  <span id="bubbleBadge">0</span>
+  <div id="resizeHandle" title="Drag to resize"></div>
+</div>
+
+<div id="panel">
+  <div class="panel-header" id="panelHeader">
+    <button class="icon-btn" id="ticketBackBtn" onclick="closeTicketView()" title="Back to notifications" style="display:none;">&#8592;</button>
+    <span class="panel-title" id="panelTitle">GigaHelpDesk</span>
+    <div class="panel-header-btns">
+      <button class="clear-all-btn" id="clearAllBtn" onclick="clearAllAlerts()" title="Dismiss every notification">Clear All</button>
+      <button class="icon-btn" id="settingsBtn" onclick="toggleSettingsDrawer()" title="Settings">&#9881;</button>
+      <button class="icon-btn" onclick="closePanel()" title="Minimize" aria-label="Minimize">&#x2212;</button>
+      <button class="icon-btn" onclick="hideBubble()" title="Hide bubble" aria-label="Hide bubble">&#x2715;</button>
+    </div>
+  </div>
+
+  <div class="alarm-strip" id="alarmStrip">
+    <span>&#128276; ALARM RINGING</span>
+    <button onclick="stopAllAlarms()">Stop All</button>
+  </div>
+
+  <div id="panelScroll">
+  <div class="panel-body" id="panelBody">
+
+    <div id="loginView">
+      <img class="login-logo" src="bubble-icon.png" alt="GigaHelpDesk">
+      <div class="login-title">Sign in to GigaHelpDesk</div>
+      <div class="login-sub">Live notification bubble</div>
+      <div class="login-field">
+        <label class="login-field-lbl" for="ghzEmail">Email</label>
+        <input type="email" id="ghzEmail" autocomplete="username">
+      </div>
+      <div class="login-field">
+        <label class="login-field-lbl" for="ghzPassword">Password</label>
+        <input type="password" id="ghzPassword" autocomplete="current-password">
+      </div>
+      <label class="remember-row"><input type="checkbox" id="ghzRemember" checked> Keep me signed in (auto re-login)</label>
+      <button class="login-btn" id="loginBtn" onclick="handleLogin()">Sign In</button>
+      <div id="loginMsg" class="login-msg"></div>
+    </div>
+
+    <div id="alertsView">
+      <div class="empty-state" id="emptyState">No notifications yet.<br>Waiting for updates…</div>
+    </div>
+  </div>
+
+  <div id="settingsDrawer">
+    <div class="mode-row">
+      <div>
+        <div class="mode-lbl">Account</div>
+        <div class="mode-desc" id="accountEmailLbl">—</div>
+      </div>
+      <button class="icon-btn" onclick="handleLogout()" title="Sign out">&#9099;</button>
+    </div>
+
+    <div class="sd-lbl" style="margin-bottom:4px;">🎨 Theme Color</div>
+    <div class="theme-row" id="themeRow">
+      <div class="theme-custom-wrap" title="Pick any color">
+        <input type="color" id="customThemeColor" value="#1d4ed8" oninput="setAccentColor(this.value)">
+      </div>
+    </div>
+
+    <div class="mode-row">
+      <div>
+        <div class="mode-lbl" id="modeLabel">Notification Mode</div>
+        <div class="mode-desc" id="modeDesc">Plays ringtone once per new notification</div>
+      </div>
+      <label class="toggle-switch">
+        <input type="checkbox" id="ringtoneToggle" onchange="onModeChange()">
+        <span class="toggle-slider"></span>
+      </label>
+    </div>
+
+    <div class="sd-row">
+      <span class="sd-lbl">Ringtone</span>
+      <select id="ringtoneSelect" onchange="saveState()">
+        <option value="ding">Soft Ding</option>
+        <option value="chime">Chime Bell</option>
+        <option value="pulse">Pulse Beep</option>
+        <option value="marimba">Marimba Hit</option>
+        <option value="alert">Alert Tone</option>
+        <option value="cuckoo">Cuckoo Clock</option>
+        <option value="siren">Siren Wail</option>
+        <option value="piano">Piano Arpeggio</option>
+        <option value="bell">Church Bell</option>
+        <option value="beepcode">Morse Beep</option>
+        <option value="xylophone">Xylophone</option>
+        <option value="fanfare" selected>Fanfare</option>
+        <option value="whistle">Referee Whistle</option>
+        <option value="__custom__" id="customOption" style="display:none;">🎵 Custom Audio</option>
+      </select>
+      <button class="icon-btn" onclick="previewRingtone()">&#9654;</button>
+    </div>
+
+    <div class="sd-row">
+      <span class="sd-lbl">SLA warning</span>
+      <select id="typeSound_sla" onchange="typeSoundMap['sla']=this.value; saveState();" style="flex:1;">
+        <option value="ding">Soft Ding</option>
+        <option value="chime">Chime Bell</option>
+        <option value="pulse">Pulse Beep</option>
+        <option value="marimba">Marimba Hit</option>
+        <option value="alert" selected>Alert Tone</option>
+        <option value="cuckoo">Cuckoo Clock</option>
+        <option value="siren">Siren Wail</option>
+        <option value="piano">Piano Arpeggio</option>
+        <option value="bell">Church Bell</option>
+        <option value="beepcode">Morse Beep</option>
+        <option value="xylophone">Xylophone</option>
+        <option value="fanfare">Fanfare</option>
+        <option value="whistle">Referee Whistle</option>
+        <option value="__custom__">Custom Audio</option>
+      </select>
+      <button class="icon-btn" onclick="previewTypeSoundByType('sla')">&#9654;</button>
+    </div>
+
+    <div class="sd-lbl" style="margin-top:12px; margin-bottom:6px;">🎵 Sound Per Notification Type</div>
+    <div class="sd-hint" style="margin-bottom:8px;">Repeating alarms: Available to accept and SLA warnings only.</div>
+    <div class="sd-row">
+      <span class="sd-lbl">Available to accept</span>
+      <select id="typeSound_available" onchange="typeSoundMap['available']=this.value; saveState();" style="flex:1;">
+        <option value="ding">Soft Ding</option>
+        <option value="chime">Chime Bell</option>
+        <option value="pulse">Pulse Beep</option>
+        <option value="marimba">Marimba Hit</option>
+        <option value="alert">Alert Tone</option>
+        <option value="cuckoo">Cuckoo Clock</option>
+        <option value="siren">Siren Wail</option>
+        <option value="piano">Piano Arpeggio</option>
+        <option value="bell">Church Bell</option>
+        <option value="beepcode">Morse Beep</option>
+        <option value="xylophone">Xylophone</option>
+        <option value="fanfare" selected>Fanfare</option>
+        <option value="whistle">Referee Whistle</option>
+        <option value="__custom__">Custom Audio</option>
+      </select>
+      <button class="icon-btn" onclick="previewTypeSoundByType('available')">&#9654;</button>
+    </div>
+    <div class="sd-row">
+      <span class="sd-lbl">Accepted</span>
+      <select id="typeSound_accepted" onchange="typeSoundMap['accepted']=this.value; saveState();" style="flex:1;">
+        <option value="ding">Soft Ding</option>
+        <option value="chime">Chime Bell</option>
+        <option value="pulse">Pulse Beep</option>
+        <option value="marimba">Marimba Hit</option>
+        <option value="alert">Alert Tone</option>
+        <option value="cuckoo">Cuckoo Clock</option>
+        <option value="siren">Siren Wail</option>
+        <option value="piano">Piano Arpeggio</option>
+        <option value="bell">Church Bell</option>
+        <option value="beepcode">Morse Beep</option>
+        <option value="xylophone">Xylophone</option>
+        <option value="chime" selected>Chime Bell</option>
+        <option value="whistle">Referee Whistle</option>
+        <option value="__custom__">Custom Audio</option>
+      </select>
+      <button class="icon-btn" onclick="previewTypeSoundByType('accepted')">&#9654;</button>
+    </div>
+    <div class="sd-row">
+      <span class="sd-lbl">New reply</span>
+      <select id="typeSound_reply" onchange="typeSoundMap['reply']=this.value; saveState();" style="flex:1;">
+        <option value="ding">Soft Ding</option>
+        <option value="chime">Chime Bell</option>
+        <option value="pulse" selected>Pulse Beep</option>
+        <option value="marimba">Marimba Hit</option>
+        <option value="alert">Alert Tone</option>
+        <option value="cuckoo">Cuckoo Clock</option>
+        <option value="siren">Siren Wail</option>
+        <option value="piano">Piano Arpeggio</option>
+        <option value="bell">Church Bell</option>
+        <option value="beepcode">Morse Beep</option>
+        <option value="xylophone">Xylophone</option>
+        <option value="fanfare">Fanfare</option>
+        <option value="whistle">Referee Whistle</option>
+        <option value="__custom__">Custom Audio</option>
+      </select>
+      <button class="icon-btn" onclick="previewTypeSoundByType('reply')">&#9654;</button>
+    </div>
+    <div class="sd-row">
+      <span class="sd-lbl">Status Changed</span>
+      <select id="typeSound_status" onchange="typeSoundMap['status']=this.value; saveState();" style="flex:1;">
+        <option value="ding">Soft Ding</option>
+        <option value="chime">Chime Bell</option>
+        <option value="pulse">Pulse Beep</option>
+        <option value="marimba" selected>Marimba Hit</option>
+        <option value="alert">Alert Tone</option>
+        <option value="cuckoo">Cuckoo Clock</option>
+        <option value="siren">Siren Wail</option>
+        <option value="piano">Piano Arpeggio</option>
+        <option value="bell">Church Bell</option>
+        <option value="beepcode">Morse Beep</option>
+        <option value="xylophone">Xylophone</option>
+        <option value="fanfare">Fanfare</option>
+        <option value="whistle">Referee Whistle</option>
+        <option value="__custom__">Custom Audio</option>
+      </select>
+      <button class="icon-btn" onclick="previewTypeSoundByType('status')">&#9654;</button>
+    </div>
+    <div class="sd-row">
+      <span class="sd-lbl">Volume</span>
+      <input type="range" id="volSlider" min="0" max="1" step="0.05" value="0.6" oninput="document.getElementById('volVal').textContent=Math.round(this.value*100)+'%'; saveState();">
+      <span class="sd-val" id="volVal">60%</span>
+    </div>
+    <div class="sd-row">
+      <span class="sd-lbl">Poll (sec)</span>
+      <input type="range" id="pollSlider" min="3" max="60" step="1" value="5" oninput="document.getElementById('pollVal').textContent=this.value+'s'; restartPolling(this.value*1000); saveState();">
+      <span class="sd-val" id="pollVal">5s</span>
+    </div>
+    <div class="sd-row">
+      <span class="sd-lbl">SLA warning threshold</span>
+      <span class="sd-val">80% elapsed</span>
+    </div>
+    <div class="sd-row">
+      <span class="sd-lbl">Business hours</span>
+      <span class="sd-val">Mon-Fri 09:00-17:00</span>
+    </div>
+    <div class="sd-row">
+      <span class="sd-lbl">Tone repeat</span>
+      <input type="range" id="toneDurationSlider" min="1" max="60" step="1" value="5" oninput="document.getElementById('toneDurationVal').textContent=this.value+'s'; setToneDuration(this.value);">
+      <span class="sd-val" id="toneDurationVal">5s</span>
+    </div>
+    <div class="sd-row">
+      <span class="sd-lbl">Preview time</span>
+      <input type="range" id="previewDurSlider" min="5" max="60" step="1" value="15" oninput="document.getElementById('previewDurVal').textContent=this.value+'s'; previewAutoHideMs=parseInt(this.value,10)*1000; saveState();">
+      <span class="sd-val" id="previewDurVal">15s</span>
+    </div>
+    <div class="sd-row">
+      <span class="sd-lbl">Max previews</span>
+      <input type="range" id="previewMaxSlider" min="1" max="10" step="1" value="5" oninput="document.getElementById('previewMaxVal').textContent=this.value; previewMaxCount=parseInt(this.value,10); saveState();">
+      <span class="sd-val" id="previewMaxVal">5</span>
+    </div>
+
+    <div class="drop-zone" id="dropZone" ondragover="event.preventDefault(); this.classList.add('dragover');" ondragleave="this.classList.remove('dragover');" ondrop="handleDrop(event)">
+      <input type="file" accept="audio/*,.mp3,.wav,.ogg,.m4a,.flac" onchange="handleFile(event)">
+      📁 Drop or click to use a custom sound<br>
+      <span id="customFileName"></span>
+    </div>
+    <div id="customSoundLibrary"></div>
+  </div>
+  </div><!-- /panelScroll -->
+
+  <div class="last-check">
+    <span class="conn-dot-lbl" id="connDotLbl"></span>
+    Last check: <span id="lastCheck">—</span> · <span id="connStatus">not connected</span>
+  </div>
+
+  <div id="panelResizeHandle" title="Drag to resize the window"></div>
+</div>
+
+<script>
+const MIN_SIZE = 60, MAX_SIZE = 140;
+const PANEL_W = 380, PANEL_H = 640;
+const TICKET_PANEL_W = 1000, TICKET_PANEL_H = 940;
+// Tracks whatever size the panel/ticket view is CURRENTLY at (starts at the
+// defaults above, but changes once the person drags the resize grip), so a
+// resize drag always grows/shrinks from where it actually is right now.
+let panelCurrentW = PANEL_W, panelCurrentH = PANEL_H;
+
+let loggedIn = false;
+let notifItems = [];             // last full list returned by the server
+let dismissedIds = new Set();    // locally hidden until they drop out of the server's list
+let seenIds = new Set();         // in-memory only — resets each app launch (mirrors the old web app's firstLoad behavior)
+let acknowledgedIds = new Set(); // unread items the user has already looked at (panel opened since they arrived) — GigaHelpDesk has no "mark as read" API, so this is tracked locally to make the badge behave
+let firstLoad = true;
+
+let pollTimer = null, pollInterval = 5000, isFetching = false;
+let audioCtx = null, isRingtoneMode = false;
+let alarmLoopTimers = {};
+let customAudioUrls = {};
+let customSoundNames = {};
+let slaCountdownTimer = null;
+let panelOpen = false;
+let ticketModeActive = false;
+let isConnected = false;
+let toneLoopIntervalMs = 5000; // how often a ringing alarm repeats
+let previewAutoHideMs = 15000; // how long a preview popup stays up
+const THEME_COLORS = ['#1d4ed8', '#7c3aed', '#059669', '#dc2626', '#ea580c', '#0d9488', '#db2777', '#475569'];
+let accentColor = '#1d4ed8';
+
+// Per-notification-type sound mappings
+let typeSoundMap = {
+  'available': 'fanfare',
+  'accepted': 'chime',
+  'reply': 'pulse',
+  'status': 'marimba',
+  'sla': 'alert'
+};
+
+// ── Persisted app state (non-secret). Credentials live in main.js's
+// encrypted session file, never in localStorage. ──
+const STATE_KEY = 'bubbleState';
+function saveState() {
+  try {
+    localStorage.setItem(STATE_KEY, JSON.stringify({
+      dismissedIds: Array.from(dismissedIds),
+      acknowledgedIds: Array.from(acknowledgedIds),
+      isRingtoneMode, accentColor,
+      ringtone: document.getElementById('ringtoneSelect').value,
+      volume: document.getElementById('volSlider').value,
+      pollIntervalMs: pollInterval,
+      previewMaxCount, toneLoopIntervalMs, previewAutoHideMs,
+      typeSoundMap: typeSoundMap
+    }));
+  } catch (e) {}
+}
+function loadState() {
+  let s;
+  try { s = JSON.parse(localStorage.getItem(STATE_KEY) || 'null'); } catch (e) { s = null; }
+  if (!s) return;
+  if (Array.isArray(s.dismissedIds)) dismissedIds = new Set(s.dismissedIds);
+  if (Array.isArray(s.acknowledgedIds)) acknowledgedIds = new Set(s.acknowledgedIds);
+  if (typeof s.isRingtoneMode === 'boolean') isRingtoneMode = s.isRingtoneMode;
+  if (s.accentColor) accentColor = s.accentColor;
+  if (s.ringtone) document.getElementById('ringtoneSelect').value = s.ringtone;
+  if (s.volume !== undefined) {
+    document.getElementById('volSlider').value = s.volume;
+    document.getElementById('volVal').textContent = Math.round(s.volume * 100) + '%';
+  }
+  if (s.pollIntervalMs) {
+    pollInterval = s.pollIntervalMs;
+    document.getElementById('pollSlider').value = Math.round(s.pollIntervalMs / 1000);
+    document.getElementById('pollVal').textContent = Math.round(s.pollIntervalMs / 1000) + 's';
+  }
+  if (s.previewMaxCount) {
+    previewMaxCount = s.previewMaxCount;
+    document.getElementById('previewMaxSlider').value = s.previewMaxCount;
+    document.getElementById('previewMaxVal').textContent = s.previewMaxCount;
+  }
+  if (s.toneLoopIntervalMs) {
+    toneLoopIntervalMs = s.toneLoopIntervalMs;
+    document.getElementById('toneDurationSlider').value = Math.round(s.toneLoopIntervalMs / 1000);
+    document.getElementById('toneDurationVal').textContent = Math.round(s.toneLoopIntervalMs / 1000) + 's';
+  }
+  if (s.previewAutoHideMs) {
+    previewAutoHideMs = s.previewAutoHideMs;
+    document.getElementById('previewDurSlider').value = Math.round(s.previewAutoHideMs / 1000);
+    document.getElementById('previewDurVal').textContent = Math.round(s.previewAutoHideMs / 1000) + 's';
+  }
+  if (s.typeSoundMap) {
+    typeSoundMap = { ...typeSoundMap, ...s.typeSoundMap };
+    Object.entries(typeSoundMap).forEach(([type, sound]) => {
+      const select = document.getElementById('typeSound_' + type);
+      if (select) select.value = sound;
+    });
+  }
+  document.getElementById('ringtoneToggle').checked = isRingtoneMode;
+  onModeChange();
+}
+
+function setToneDuration(seconds) {
+  toneLoopIntervalMs = Math.max(1, Math.min(60, parseInt(seconds, 10) || 5)) * 1000;
+  Object.keys(alarmLoopTimers).forEach(id => {
+    const entry = alarmLoopTimers[id];
+    clearInterval(entry.timerId);
+    alarmLoopTimers[id].timerId = setInterval(() => playRingtone(entry.item), toneLoopIntervalMs);
+  });
+  saveState();
+}
+
+function renderThemeSwatches() {
+  const row = document.getElementById('themeRow');
+  const customWrap = row.querySelector('.theme-custom-wrap');
+  row.querySelectorAll('.theme-swatch').forEach(el => el.remove());
+  THEME_COLORS.forEach(c => {
+    const sw = document.createElement('div');
+    sw.className = 'theme-swatch' + (c.toLowerCase() === accentColor.toLowerCase() ? ' active' : '');
+    sw.style.background = c;
+    sw.title = c;
+    sw.onclick = () => setAccentColor(c);
+    row.insertBefore(sw, customWrap);
+  });
+  document.getElementById('customThemeColor').value = accentColor;
+}
+
+function setAccentColor(color) {
+  accentColor = color;
+  document.documentElement.style.setProperty('--accent', color);
+  renderThemeSwatches();
+  saveState();
+}
+
+function setConnStatus(connected, label) {
+  isConnected = connected;
+  const bubbleEl2 = document.getElementById('bubble');
+  const footerDot = document.getElementById('connDotLbl');
+  bubbleEl2.classList.toggle('conn-good', connected);
+  bubbleEl2.classList.toggle('conn-bad', !connected);
+  footerDot.classList.toggle('connected', connected);
+  footerDot.classList.toggle('disconnected', !connected);
+  bubbleEl2.title = connected ? 'Connected — receiving live updates (drag to move, click to open)' : 'Not connected (drag to move, click to open)';
+  if (label) document.getElementById('connStatus').textContent = label;
+}
+
+// ── Login / logout ──
+
+function showLoginView() {
+  document.getElementById('loginView').style.display = 'flex';
+  document.getElementById('alertsView').style.display = 'none';
+  document.getElementById('clearAllBtn').style.display = 'none';
+  document.getElementById('settingsBtn').style.display = 'none';
+  document.getElementById('settingsDrawer').classList.remove('open');
+  document.getElementById('panelTitle').textContent = 'Sign in';
+}
+function showAlertsView() {
+  document.getElementById('loginView').style.display = 'none';
+  document.getElementById('alertsView').style.display = 'block';
+  document.getElementById('clearAllBtn').style.display = '';
+  document.getElementById('settingsBtn').style.display = '';
+  document.getElementById('panelTitle').textContent = 'GigaHelpDesk Notifications';
+}
+
+function handleLogin() {
+  const email = document.getElementById('ghzEmail').value.trim();
+  const password = document.getElementById('ghzPassword').value;
+  const remember = document.getElementById('ghzRemember').checked;
+  const msgEl = document.getElementById('loginMsg');
+  const btn = document.getElementById('loginBtn');
+
+  if (!email || !password) {
+    msgEl.style.color = '#b91c1c';
+    msgEl.textContent = 'Enter email and password';
+    return;
+  }
+  msgEl.style.color = '#6b7280';
+  msgEl.textContent = 'Signing in…';
+  btn.disabled = true;
+
+  window.ghzAPI.login(email, password, remember).then(res => {
+    btn.disabled = false;
+    if (res.success) {
+      document.getElementById('ghzPassword').value = '';
+      loggedIn = true;
+      document.getElementById('accountEmailLbl').textContent = email;
+      showAlertsView();
+      firstLoad = true;
+      renderList(); updateBadge();
+      poll();
+      if (!pollTimer) pollTimer = setInterval(poll, pollInterval);
+    } else {
+      msgEl.style.color = '#b91c1c';
+      msgEl.textContent = res.message || 'Login failed';
+    }
+  }).catch(err => {
+    btn.disabled = false;
+    msgEl.style.color = '#b91c1c';
+    msgEl.textContent = 'Error: ' + err.message;
+  });
+}
+
+function handleLogout() {
+  clearInterval(pollTimer); pollTimer = null;
+  stopAllAlarms();
+  window.ghzAPI.logout().then(() => {
+    loggedIn = false;
+    notifItems = [];
+    seenIds = new Set();
+    dismissedIds = new Set();
+    acknowledgedIds = new Set();
+    firstLoad = true;
+    saveState();
+    updateBadge();
+    setConnStatus(false, 'signed out');
+    showLoginView();
+    if (!panelOpen) openPanel();
+  });
+}
+
+let isDraggingAny = false;
+
+// Uses Pointer Capture (setPointerCapture) rather than window-level mouse
+// listeners. The bubble's window is tiny (~114px) and frameless; on a fast
+// flick the OS cursor can easily outrun it between animation frames and
+// leave the window's bounds entirely. With plain mousemove/mouseup on
+// `window`, once the cursor is no longer physically over the window those
+// events simply stop arriving — the drag "freezes" mid-air, mouseup never
+// fires, and the bubble is left wherever it happened to be, effectively
+// lost. Pointer Capture keeps delivering pointermove/pointerup to the
+// element that captured it regardless of where the cursor physically is,
+// which is exactly what a tiny draggable window needs.
+function attachDrag(handleEl) {
+  let dragging = false, moved = false, startX, startY, pointerId = null;
+  let pendingDx = 0, pendingDy = 0, frameQueued = false;
+
+  function flushMove() {
+    frameQueued = false;
+    if (pendingDx !== 0 || pendingDy !== 0) {
+      window.bubbleAPI.moveWindow(pendingDx, pendingDy);
+      pendingDx = 0; pendingDy = 0;
+    }
+  }
+
+  handleEl.addEventListener('pointerdown', (e) => {
+    if (e.button !== 0) return;
+    if (e.target.closest('button, a, input, select, textarea')) return; // let clicks on header buttons (Back/Close/etc) through untouched
+    dragging = true; moved = false; startX = e.screenX; startY = e.screenY;
+    pointerId = e.pointerId;
+    try { handleEl.setPointerCapture(pointerId); } catch (err) {}
+  });
+  handleEl.addEventListener('pointermove', (e) => {
+    if (!dragging || e.pointerId !== pointerId) return;
+    const dx = e.screenX - startX, dy = e.screenY - startY;
+    if (Math.abs(dx) > 3 || Math.abs(dy) > 3) {
+      if (!moved) {
+        moved = true;
+        isDraggingAny = true;
+        setMouseInteractive(true);
+      }
+    }
+    if (moved) {
+      startX = e.screenX; startY = e.screenY;
+      pendingDx += dx; pendingDy += dy;
+      if (!frameQueued) { frameQueued = true; requestAnimationFrame(flushMove); }
+    }
+  });
+  function endDrag(e) {
+    if (!dragging) return;
+    if (!moved) handleEl.dataset.clicked = 'true';
+    dragging = false;
+    isDraggingAny = false;
+    mouseInteractive = null;
+    try { if (pointerId !== null) handleEl.releasePointerCapture(pointerId); } catch (err) {}
+    pointerId = null;
+  }
+  handleEl.addEventListener('pointerup', endDrag);
+  handleEl.addEventListener('pointercancel', endDrag);
+}
+attachDrag(document.getElementById('bubble'));
+attachDrag(document.getElementById('panelHeader'));
+
+document.getElementById('bubble').addEventListener('click', () => {
+  if (document.getElementById('bubble').dataset.clicked === 'true') {
+    document.getElementById('bubble').dataset.clicked = '';
+    openPanel();
+  }
+});
+
+const resizeHandle = document.getElementById('resizeHandle');
+let resizing = false, resizeStartX, resizeStartSize, resizePointerId = null;
+resizeHandle.addEventListener('pointerdown', (e) => {
+  e.stopPropagation();
+  resizing = true; resizeStartX = e.screenX;
+  resizeStartSize = parseInt(getComputedStyle(document.documentElement).getPropertyValue('--bubble-size'));
+  resizePointerId = e.pointerId;
+  try { resizeHandle.setPointerCapture(resizePointerId); } catch (err) {}
+});
+resizeHandle.addEventListener('pointermove', (e) => {
+  if (!resizing || e.pointerId !== resizePointerId) return;
+  const delta = e.screenX - resizeStartX;
+  const newSize = Math.max(MIN_SIZE, Math.min(MAX_SIZE, resizeStartSize + delta));
+  document.documentElement.style.setProperty('--bubble-size', newSize + 'px');
+  window.bubbleAPI.resizeBubble(newSize);
+});
+function endBubbleResize(e) {
+  resizing = false;
+  try { if (resizePointerId !== null) resizeHandle.releasePointerCapture(resizePointerId); } catch (err) {}
+  resizePointerId = null;
+}
+resizeHandle.addEventListener('pointerup', endBubbleResize);
+resizeHandle.addEventListener('pointercancel', endBubbleResize);
+
+// Manual expand/resize grip for the panel & ticket view — lets the person
+// drag the window bigger themselves whenever the default portrait size
+// isn't enough, on top of whatever this app sets automatically.
+const panelResizeHandle = document.getElementById('panelResizeHandle');
+let panelResizing = false, panelResizeStartX, panelResizeStartY, panelStartW, panelStartH, panelResizePointerId = null;
+panelResizeHandle.addEventListener('pointerdown', (e) => {
+  e.stopPropagation();
+  panelResizing = true;
+  panelResizeStartX = e.screenX; panelResizeStartY = e.screenY;
+  panelStartW = panelCurrentW; panelStartH = panelCurrentH;
+  panelResizePointerId = e.pointerId;
+  try { panelResizeHandle.setPointerCapture(panelResizePointerId); } catch (err) {}
+});
+panelResizeHandle.addEventListener('pointermove', (e) => {
+  if (!panelResizing || e.pointerId !== panelResizePointerId) return;
+  const dw = e.screenX - panelResizeStartX, dh = e.screenY - panelResizeStartY;
+  panelCurrentW = Math.max(320, panelStartW + dw);
+  panelCurrentH = Math.max(420, panelStartH + dh);
+  window.bubbleAPI.resizePanel(panelCurrentW, panelCurrentH);
+});
+function endPanelResize(e) {
+  panelResizing = false;
+  try { if (panelResizePointerId !== null) panelResizeHandle.releasePointerCapture(panelResizePointerId); } catch (err) {}
+  panelResizePointerId = null;
+}
+panelResizeHandle.addEventListener('pointerup', endPanelResize);
+panelResizeHandle.addEventListener('pointercancel', endPanelResize);
+
+function openPanel() {
+  clearAllPreviews();
+  panelOpen = true;
+  panelCurrentW = PANEL_W; panelCurrentH = PANEL_H;
+  document.getElementById('bubble').style.display = 'none';
+  const panel = document.getElementById('panel');
+  panel.classList.remove('panel-exiting', 'panel-entering');
+  panel.classList.add('open');
+  void panel.offsetWidth;
+  panel.classList.add('panel-entering');
+  setTimeout(() => panel.classList.remove('panel-entering'), 240);
+  window.bubbleAPI.expandPanel(PANEL_W, PANEL_H);
+  setMouseInteractive(true);
+  if (loggedIn) {
+    // Opening the panel means the user has now seen whatever's in it —
+    // clear the pending badge for everything currently listed. GigaHelpDesk
+    // has no "mark as read" endpoint, so this is purely local bookkeeping;
+    // it only affects the bubble's own badge, not the site's unread state.
+    notifItems.forEach(it => { if (!it.is_read) acknowledgedIds.add(it.id); });
+    trimAcknowledgedIds();
+    saveState();
+    renderList();
+    updateBadge();
+  }
+}
+function closePanel(afterClose) {
+  if (!panelOpen) {
+    if (typeof afterClose === 'function') afterClose();
+    return;
+  }
+  panelOpen = false;
+  if (ticketModeActive) {
+    // Reset the ticket-mode UI state (header buttons, title, hidden list)
+    // without triggering its own resize — collapseBubble() below will
+    // resize the window straight to the bubble circle in one step.
+    ticketModeActive = false;
+    document.getElementById('panelScroll').style.display = '';
+    document.querySelector('.last-check').style.display = '';
+    document.getElementById('clearAllBtn').style.display = '';
+    document.getElementById('settingsBtn').style.display = '';
+    document.getElementById('ticketBackBtn').style.display = 'none';
+    document.getElementById('panelTitle').textContent = 'GigaHelpDesk Notifications';
+  }
+  const panel = document.getElementById('panel');
+  const bubble = document.getElementById('bubble');
+  panel.classList.add('panel-exiting');
+  setTimeout(() => {
+    panel.classList.remove('open', 'panel-exiting');
+    bubble.style.display = 'flex';
+    window.bubbleAPI.collapseBubble();
+    mouseInteractive = null;
+    if (typeof afterClose === 'function') afterClose();
+  }, 180);
+}
+function toggleSettingsDrawer() { document.getElementById('settingsDrawer').classList.toggle('open'); }
+
+function hideBubble() {
+  if (panelOpen) {
+    closePanel(() => window.bubbleAPI.hideWindow());
+    return;
+  }
+  const bubble = document.getElementById('bubble');
+  bubble.classList.add('bubble-exiting');
+  setTimeout(() => {
+    bubble.classList.remove('bubble-exiting');
+    window.bubbleAPI.hideWindow();
+  }, 180);
+}
+
+function protectRingtoneDropdowns() {
+  document.querySelectorAll('#settingsDrawer select').forEach(select => {
+    select.addEventListener('pointerdown', event => {
+      event.stopPropagation();
+      setMouseInteractive(true);
+    }, true);
+    select.addEventListener('mousedown', event => {
+      event.stopPropagation();
+      setMouseInteractive(true);
+    }, true);
+    select.addEventListener('focus', () => setMouseInteractive(true));
+    select.addEventListener('blur', () => {
+      setTimeout(() => {
+        if (!document.querySelector('#settingsDrawer select:focus')) setMouseInteractive(true);
+      }, 100);
+    });
+  });
+}
+
+function getAudioCtx() { if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)(); return audioCtx; }
+
+// Get the ringtone sound for a specific notification, or the global ringtone
+function getRingtoneForNotification(notifItem) {
+  if (!notifItem) {
+    return document.getElementById('ringtoneSelect').value;
+  }
+  // Check multiple possible field names for the notification type
+  const notifType = notifItem.type || notifItem.action || notifItem.category || notifItem.kind || notifItem.notif_type || notifItem.notification_type;
+  if (!notifType) {
+    return document.getElementById('ringtoneSelect').value;
+  }
+  const typeSound = typeSoundMap[notifType];
+  return typeSound || document.getElementById('ringtoneSelect').value;
+}
+
+function ensureCustomSoundOptions() {
+  ['sla', 'available', 'accepted', 'reply', 'status'].forEach(type => {
+    const select = document.getElementById('typeSound_' + type);
+    if (!select) return;
+    select.querySelectorAll('option[value="__custom__"]').forEach(option => option.remove());
+    Object.entries(customSoundNames).forEach(([id, name]) => {
+      const value = '__custom__:' + id;
+      if (select.querySelector('option[value="' + value + '"]')) return;
+      const option = document.createElement('option');
+      option.value = value;
+      option.textContent = name;
+      select.appendChild(option);
+    });
+  });
+  const mainSelect = document.getElementById('ringtoneSelect');
+  if (mainSelect) {
+    mainSelect.querySelectorAll('option[value="__custom__"]').forEach(option => option.remove());
+    Object.entries(customSoundNames).forEach(([id, name]) => {
+    const value = '__custom__:' + id;
+    if (mainSelect.querySelector('option[value="' + value + '"]')) return;
+    const option = document.createElement('option');
+    option.value = value;
+    option.textContent = name;
+    mainSelect.appendChild(option);
+    });
+  }
+}
+
+function addCustomSound(sound) {
+  if (!sound || !sound.id || !sound.data) return;
+  const bytes = Uint8Array.from(atob(sound.data), c => c.charCodeAt(0));
+  customAudioUrls[sound.id] = URL.createObjectURL(new Blob([bytes], { type: 'audio/mpeg' }));
+  customSoundNames[sound.id] = sound.name || sound.id;
+  ensureCustomSoundOptions();
+  document.getElementById('customFileName').textContent = '✔ ' + customSoundNames[sound.id];
+  renderCustomSoundLibrary();
+}
+
+function addCustomSoundBytes(id, name, data) {
+  customAudioUrls[id] = URL.createObjectURL(new Blob([new Uint8Array(data)], { type: 'audio/mpeg' }));
+  customSoundNames[id] = name || id;
+  ensureCustomSoundOptions();
+  document.getElementById('customFileName').textContent = '✔ ' + customSoundNames[id];
+  renderCustomSoundLibrary();
+}
+
+function renderCustomSoundLibrary() {
+  const library = document.getElementById('customSoundLibrary');
+  if (!library) return;
+  library.innerHTML = '';
+  Object.entries(customSoundNames).forEach(([id, name]) => {
+    const row = document.createElement('div');
+    row.className = 'custom-sound-row';
+    const label = document.createElement('span');
+    label.textContent = name;
+    const rename = document.createElement('button');
+    rename.className = 'sound-manage-btn'; rename.textContent = 'Rename';
+    rename.onclick = () => {
+      const next = window.prompt('New sound name', name);
+      if (!next || next.trim() === name) return;
+      window.ghzAPI.renameCustomSound(id, next.trim()).then(result => {
+        if (!result || !result.success) return;
+        customSoundNames[id] = result.name;
+        ensureCustomSoundOptions(); renderCustomSoundLibrary(); saveState();
+      });
+    };
+    const remove = document.createElement('button');
+    remove.className = 'sound-manage-btn sound-delete-btn'; remove.textContent = 'Delete';
+    remove.onclick = () => {
+      if (!window.confirm('Delete ' + name + '?')) return;
+      window.ghzAPI.deleteCustomSound(id).then(result => {
+        if (!result || !result.success) return;
+        if (customAudioUrls[id]) URL.revokeObjectURL(customAudioUrls[id]);
+        delete customAudioUrls[id]; delete customSoundNames[id];
+        Object.keys(typeSoundMap).forEach(type => { if (typeSoundMap[type] === '__custom__:' + id) typeSoundMap[type] = 'ding'; });
+        ensureCustomSoundOptions(); renderCustomSoundLibrary(); saveState();
+      });
+    };
+    row.append(label, rename, remove); library.appendChild(row);
+  });
+}
+
+const RINGTONES = {
+  ding: (ctx, vol) => { const t=ctx.currentTime,o=ctx.createOscillator(),g=ctx.createGain(); o.connect(g);g.connect(ctx.destination); o.frequency.setValueAtTime(1200,t); o.frequency.exponentialRampToValueAtTime(800,t+0.5); g.gain.setValueAtTime(vol,t); g.gain.exponentialRampToValueAtTime(0.001,t+0.5); o.start(t); o.stop(t+0.5); },
+  chime: (ctx, vol) => { const t=ctx.currentTime; [523,659,784].forEach((f,i)=>{ const o=ctx.createOscillator(),g=ctx.createGain(); o.connect(g);g.connect(ctx.destination); o.type='sine'; o.frequency.value=f; const s=t+i*0.12; g.gain.setValueAtTime(0,s); g.gain.linearRampToValueAtTime(vol,s+0.02); g.gain.exponentialRampToValueAtTime(0.001,s+0.5); o.start(s); o.stop(s+0.6); }); },
+  pulse: (ctx, vol) => { const t=ctx.currentTime; for(let i=0;i<3;i++){ const o=ctx.createOscillator(),g=ctx.createGain(); o.connect(g);g.connect(ctx.destination); o.frequency.value=880; const s=t+i*0.15; g.gain.setValueAtTime(vol,s); g.gain.exponentialRampToValueAtTime(0.001,s+0.1); o.start(s); o.stop(s+0.15);} },
+  marimba: (ctx, vol) => { const t=ctx.currentTime,o=ctx.createOscillator(),g=ctx.createGain(); o.connect(g);g.connect(ctx.destination); o.type='triangle'; o.frequency.setValueAtTime(1046,t); o.frequency.exponentialRampToValueAtTime(523,t+0.1); g.gain.setValueAtTime(vol*1.2,t); g.gain.exponentialRampToValueAtTime(0.001,t+0.5); o.start(t); o.stop(t+0.5); },
+  alert: (ctx, vol) => { const t=ctx.currentTime,o=ctx.createOscillator(),g=ctx.createGain(); const lfo=ctx.createOscillator(),lg=ctx.createGain(); lfo.connect(lg); lg.connect(o.frequency); o.connect(g); g.connect(ctx.destination); o.frequency.value=1000; lfo.frequency.value=8; lg.gain.value=200; g.gain.setValueAtTime(vol,t); g.gain.exponentialRampToValueAtTime(0.001,t+0.5); lfo.start(t); lfo.stop(t+0.5); o.start(t); o.stop(t+0.5); },
+  cuckoo: (ctx, vol) => { const t=ctx.currentTime; [[660,520],[660,520]].forEach(([f1,f2],i)=>{ const s=t+i*0.45; [[f1,0,0.15],[f2,0.2,0.35]].forEach(([freq,off,end])=>{ const o=ctx.createOscillator(),g=ctx.createGain(); o.type='triangle'; o.frequency.value=freq; o.connect(g); g.connect(ctx.destination); g.gain.setValueAtTime(vol,s+off); g.gain.exponentialRampToValueAtTime(0.001,s+end); o.start(s+off); o.stop(s+end+0.05); }); }); },
+  siren: (ctx, vol) => { const t=ctx.currentTime; for(let i=0;i<2;i++){ const o=ctx.createOscillator(),g=ctx.createGain(); o.connect(g);g.connect(ctx.destination); const s=t+i*0.5; o.frequency.setValueAtTime(600,s); o.frequency.linearRampToValueAtTime(1200,s+0.25); o.frequency.linearRampToValueAtTime(600,s+0.5); g.gain.setValueAtTime(vol*0.7,s); g.gain.exponentialRampToValueAtTime(0.001,s+0.5); o.start(s); o.stop(s+0.55);} },
+  piano: (ctx, vol) => { const notes=[261.63,329.63,392.00,523.25,659.25]; const t=ctx.currentTime; notes.forEach((freq,i)=>{ const o=ctx.createOscillator(),g=ctx.createGain(); o.type='triangle'; o.frequency.value=freq; o.connect(g); g.connect(ctx.destination); const s=t+i*0.1; g.gain.setValueAtTime(vol*0.8,s); g.gain.exponentialRampToValueAtTime(0.001,s+0.5); o.start(s); o.stop(s+0.55); }); },
+  bell: (ctx, vol) => { const t=ctx.currentTime; [1,2.756,5.404,8.933].forEach((ratio,i)=>{ const o=ctx.createOscillator(),g=ctx.createGain(); o.type='sine'; o.frequency.value=110*ratio; o.connect(g); g.connect(ctx.destination); const gv=vol/(i+1); g.gain.setValueAtTime(gv,t); g.gain.exponentialRampToValueAtTime(0.001,t+2); o.start(t); o.stop(t+2.1); }); },
+  beepcode: (ctx, vol) => { const t=ctx.currentTime; const pattern=[80,80,80,240,240,240,80,80,80]; const gaps=[80,160,80,160,80,160,80,160,80]; let cursor=0; pattern.forEach((onMs,i)=>{ const s=t+cursor/1000; const o=ctx.createOscillator(),g=ctx.createGain(); o.frequency.value=700; o.connect(g); g.connect(ctx.destination); g.gain.setValueAtTime(vol,s); g.gain.exponentialRampToValueAtTime(0.001,s+onMs/1000); o.start(s); o.stop(s+onMs/1000+0.02); cursor+=onMs+gaps[i]; }); },
+  xylophone: (ctx, vol) => { const notes=[523,587,659,698,784]; const t=ctx.currentTime; notes.forEach((freq,i)=>{ const o=ctx.createOscillator(),g=ctx.createGain(); o.type='square'; o.frequency.value=freq; o.connect(g); g.connect(ctx.destination); const s=t+i*0.13; g.gain.setValueAtTime(vol*0.5,s); g.gain.exponentialRampToValueAtTime(0.001,s+0.18); o.start(s); o.stop(s+0.22); }); },
+  fanfare: (ctx, vol) => { const t=ctx.currentTime; [[523,0],[659,0.12],[784,0.24],[1047,0.38]].forEach(([freq,off])=>{ const o=ctx.createOscillator(),g=ctx.createGain(); o.type='sawtooth'; o.frequency.value=freq; o.connect(g); g.connect(ctx.destination); g.gain.setValueAtTime(vol*0.4,t+off); g.gain.exponentialRampToValueAtTime(0.001,t+off+0.3); o.start(t+off); o.stop(t+off+0.35); }); },
+  whistle: (ctx, vol) => { const t=ctx.currentTime; for(let i=0;i<2;i++){ const o=ctx.createOscillator(),g=ctx.createGain(); o.type='sine'; o.frequency.value=3800; o.connect(g); g.connect(ctx.destination); const s=t+i*0.28; g.gain.setValueAtTime(vol*0.8,s); g.gain.exponentialRampToValueAtTime(0.001,s+0.2); o.start(s); o.stop(s+0.22); } }
+};
+
+function playRingtone(notifItem) {
+  const sel = notifItem ? getRingtoneForNotification(notifItem) : document.getElementById('ringtoneSelect').value;
+  const vol = parseFloat(document.getElementById('volSlider').value);
+  if (sel.startsWith('__custom__:') && customAudioUrls[sel.slice(11)]) { const a = new Audio(customAudioUrls[sel.slice(11)]); a.volume = vol; a.play().catch(()=>{}); return; }
+  try { RINGTONES[sel] ? RINGTONES[sel](getAudioCtx(), vol) : RINGTONES.ding(getAudioCtx(), vol); } catch(e) {}
+}
+function previewRingtone() { playRingtone(); }
+function previewTypeSoundByType(type) { 
+  const sound = typeSoundMap[type];
+  if (sound && sound.startsWith('__custom__:')) { playRingtone({ type }); return; }
+  const vol = parseFloat(document.getElementById('volSlider').value);
+  try { RINGTONES[sound] ? RINGTONES[sound](getAudioCtx(), vol) : RINGTONES.ding(getAudioCtx(), vol); } catch(e) {}
+}
+
+function handleFile(e) { const f = e.target.files[0]; if (f) loadCustomFile(f); }
+function handleDrop(e) { e.preventDefault(); document.getElementById('dropZone').classList.remove('dragover'); const f = e.dataTransfer.files[0]; if (f) loadCustomFile(f); }
+function loadCustomFile(file) {
+  file.arrayBuffer().then(data => {
+    const bytes = Array.from(new Uint8Array(data));
+    return window.ghzAPI.saveCustomSound(file.name, bytes).then(result => ({ result, data }));
+  }).then(({ result, data }) => {
+    if (!result || !result.success) throw new Error('save failed');
+    addCustomSoundBytes(result.id, result.name, data);
+    typeSoundMap.sla = '__custom__:' + result.id;
+    document.getElementById('typeSound_sla').value = typeSoundMap.sla;
+    saveState();
+  }).catch(() => {
+    document.getElementById('customFileName').textContent = 'Could not save sound';
+  });
+}
+
+// Types that should ring on a loop until manually dismissed.
+// Everything else (reply, accepted, status, …) plays once and stops.
+function getNotifType(item) {
+  return item.type || item.action || item.category || item.kind || item.notif_type || item.notification_type || '';
+}
+
+function normalizedNotifType(item) {
+  return String(getNotifType(item)).trim().toLowerCase().replace(/[\s-]+/g, '_');
+}
+
+function isAvailableNotification(item) {
+  const type = normalizedNotifType(item);
+  if (type === 'available' || type === 'available_to_accept') return true;
+  const text = String((item && item.title) || '') + ' ' + String((item && item.message) || '');
+  return /available\s+to\s+accept/i.test(text);
+}
+
+function isReplyNotification(item) {
+  const type = normalizedNotifType(item);
+  return type === 'reply' || type === 'new_reply' || type.includes('reply');
+}
+
+function isAcceptedNotification(item) {
+  const type = normalizedNotifType(item);
+  return type === 'accepted' || type === 'ticket_accepted' || type.includes('accepted');
+}
+
+function isAcceptedTicket(item) {
+  return /accepted/i.test(String(item && (item.status || item.state) || ''));
+}
+
+function ticketKey(item) {
+  return String(item && (item.ticket_number || item.ticket_no || item.ticket_id) || '').trim().toLowerCase();
+}
+
+function isResolvedTicket(item) {
+  return /closed|resolved|cancelled/i.test(String(item && (item.status || item.state) || ''));
+}
+
+function startAlarmLoop(notifItem) {
+  const id = notifItem.id;
+  if (alarmLoopTimers[id]) return;
+  playRingtone(notifItem);
+  // Only SLA warnings and "available to accept" notifications ring on a loop.
+  // All other types already played their one-shot sound above — done.
+  if (!isAvailableNotification(notifItem) && normalizedNotifType(notifItem) !== 'sla') return;
+  alarmLoopTimers[id] = { timerId: setInterval(() => playRingtone(notifItem), toneLoopIntervalMs), item: notifItem };
+  updateAlarmUI();
+}
+function stopAlarmLoop(id) {
+  if (alarmLoopTimers[id]) { 
+    clearInterval(alarmLoopTimers[id].timerId); 
+    delete alarmLoopTimers[id]; 
+  }
+  updateAlarmUI(); renderList();
+}
+function stopAllAlarms() { Object.keys(alarmLoopTimers).forEach(stopAlarmLoop); }
+function updateAlarmUI() {
+  const ringing = Object.keys(alarmLoopTimers).length > 0;
+  document.getElementById('alarmStrip').classList.toggle('visible', ringing);
+  document.getElementById('bubble').classList.toggle('ringing', ringing);
+}
+
+function onModeChange() {
+  isRingtoneMode = document.getElementById('ringtoneToggle').checked;
+  document.getElementById('modeLabel').textContent = isRingtoneMode ? 'Ringtone Mode' : 'Notification Mode';
+  document.getElementById('modeDesc').textContent = isRingtoneMode ? 'Repeats only for Available to accept and SLA warnings' : 'Plays ringtone once per new notification';
+  saveState();
+}
+
+// Expands the SAME bubble panel in place to show one ticket at a time —
+// status, pending/SLA time, the full conversation, a reply box, and
+// attachments, all live from GigaHelpDesk itself. Clicking a different
+// notification while a ticket is already open just loads that ticket
+// into the same panel; it never opens a second window.
+function openNotif(url) {
+  if (!url) return;
+  showTicketView(url);
+}
+function openNotifExternal(url) {
+  if (!url) return;
+  window.ghzAPI.openExternal(url);
+}
+
+function showTicketView(url) {
+  const headerHeight = document.getElementById('panelHeader').offsetHeight;
+  ticketModeActive = true;
+  panelCurrentW = TICKET_PANEL_W; panelCurrentH = TICKET_PANEL_H;
+  document.getElementById('loginView').style.display = 'none';
+  document.getElementById('panelScroll').style.display = 'none';
+  document.querySelector('.last-check').style.display = 'none';
+  document.getElementById('settingsDrawer').classList.remove('open');
+  document.getElementById('clearAllBtn').style.display = 'none';
+  document.getElementById('settingsBtn').style.display = 'none';
+  document.getElementById('ticketBackBtn').style.display = '';
+  document.getElementById('panelTitle').textContent = 'Ticket';
+
+  window.ghzAPI.showTicketPanel(url, TICKET_PANEL_W, TICKET_PANEL_H, headerHeight).then(res => {
+    if (!res || res.success === false) {
+      // Couldn't sign the panel in (e.g. session expired) — fall back to the browser.
+      window.ghzAPI.openExternal(url);
+      closeTicketView();
+    }
+  }).catch(() => {
+    window.ghzAPI.openExternal(url);
+    closeTicketView();
+  });
+}
+
+function closeTicketView() {
+  if (!ticketModeActive) return;
+  ticketModeActive = false;
+  panelCurrentW = PANEL_W; panelCurrentH = PANEL_H;
+  window.ghzAPI.hideTicketPanel(PANEL_W, PANEL_H);
+  document.getElementById('panelScroll').style.display = '';
+  document.querySelector('.last-check').style.display = '';
+  document.getElementById('clearAllBtn').style.display = '';
+  document.getElementById('settingsBtn').style.display = '';
+  document.getElementById('ticketBackBtn').style.display = 'none';
+  document.getElementById('panelTitle').textContent = 'GigaHelpDesk Notifications';
+}
+
+// ── Polling GigaHelpDesk via the main process ──
+
+function poll() {
+  document.getElementById('lastCheck').textContent = new Date().toLocaleTimeString();
+  if (!loggedIn) { setConnStatus(false, 'not signed in'); return; }
+  if (isFetching) return;
+  isFetching = true;
+
+  window.ghzAPI.getNotifications().then(data => {
+    isFetching = false;
+    if (data && data.error) {
+      if (data.code === 401) {
+        loggedIn = false;
+        stopAllAlarms();
+        clearInterval(pollTimer); pollTimer = null;
+        setConnStatus(false, 'signed out');
+        showLoginView();
+        if (!panelOpen) openPanel();
+        return;
+      }
+      const busy = /busy/i.test(data.message || '');
+      setConnStatus(busy ? true : false, busy ? 'busy — retrying shortly' : (data.message || ('error ' + data.code)));
+      return;
+    }
+    if (!data || !Array.isArray(data.items)) {
+      setConnStatus(false, 'unexpected server response');
+      return;
+    }
+    setConnStatus(true, 'connected');
+    onData(data);
+  }).catch(err => {
+    isFetching = false;
+    setConnStatus(false, 'connection error');
+  });
+}
+
+function restartPolling(newInterval) {
+  pollInterval = newInterval;
+  clearInterval(pollTimer);
+  if (loggedIn) pollTimer = setInterval(poll, pollInterval);
+}
+
+function onData(data) {
+  notifItems = Array.from(new Map(data.items.map(item => [String(item.id), item])).values());
+
+  const freshEvents = [];
+  const freshUnread = [];
+  notifItems.forEach(it => {
+    if (!seenIds.has(it.id)) {
+      seenIds.add(it.id);
+      freshEvents.push(it);
+      if (!firstLoad && !it.is_read) freshUnread.push(it);
+    }
+  });
+  trimSeenIds();
+
+  // Reconcile each SLA alarm with the current ticket activity. A reply completes
+  // only First Response; Resolution remains active until the ticket is resolved.
+  if (Object.keys(alarmLoopTimers).length > 0) {
+    const repliedUrls = new Set(
+      freshEvents
+        .filter(it => isReplyNotification(it) && it.open_url)
+        .map(it => it.open_url)
+    );
+    const repliedTickets = new Set(
+      freshEvents
+        .filter(isReplyNotification)
+        .map(ticketKey)
+        .filter(Boolean)
+    );
+    const acceptedUrls = new Set(
+      freshEvents
+        .filter(it => isAcceptedNotification(it) && it.open_url)
+        .map(it => it.open_url)
+    );
+    const acceptedTickets = new Set(
+      freshEvents
+        .filter(isAcceptedNotification)
+        .map(ticketKey)
+        .filter(Boolean)
+    );
+    const hasUnmatchedAcceptedEvent = freshEvents.some(isAcceptedNotification);
+    const activeAvailableCount = Object.keys(alarmLoopTimers).filter(id =>
+      isAvailableNotification(alarmLoopTimers[id] && alarmLoopTimers[id].item)
+    ).length;
+    const ticketByUrl = new Map();
+    notifItems.filter(it => it.open_url).forEach(it => {
+      const existing = ticketByUrl.get(it.open_url);
+      if (!existing || isResolvedTicket(it)) ticketByUrl.set(it.open_url, it);
+    });
+    Object.keys(alarmLoopTimers).forEach(id => {
+      const entry = alarmLoopTimers[id];
+      const item = entry && entry.item;
+      if (!item) return;
+      const key = ticketKey(item);
+      const ticket = item.open_url ? ticketByUrl.get(item.open_url) :
+        notifItems.find(it => key && ticketKey(it) === key);
+      const firstResponseAnswered = item.sla_kind === 'first_response' &&
+        (item.first_response_complete || repliedUrls.has(item.open_url) ||
+          (!!key && repliedTickets.has(key)));
+      const resolutionCompleted = item.sla_kind === 'resolution' && ticket && isResolvedTicket(ticket);
+      const availableCompleted = isAvailableNotification(item) &&
+        (repliedUrls.has(item.open_url) || acceptedUrls.has(item.open_url) ||
+          isAcceptedTicket(ticket) ||
+          (!!key && (repliedTickets.has(key) || acceptedTickets.has(key))) ||
+          (hasUnmatchedAcceptedEvent && activeAvailableCount === 1));
+      if (firstResponseAnswered || resolutionCompleted || availableCompleted) stopAlarmLoop(id);
+    });
+  }
+
+  if (freshUnread.length) {
+    freshUnread.forEach(it => { if (isRingtoneMode) startAlarmLoop(it); });
+    if (!isRingtoneMode) freshUnread.forEach(it => playRingtone(it));
+    addPreviewsForBatch(freshUnread);
+    triggerPopBurst();
+    document.title = '(' + freshUnread.length + ' new) GigaHelpDesk';
+  }
+
+  // If the panel is open when new items land, they've effectively already
+  // been seen — don't leave the badge claiming there's something pending.
+  if (panelOpen) {
+    notifItems.forEach(it => { if (!it.is_read) acknowledgedIds.add(it.id); });
+  }
+
+  firstLoad = false;
+  renderList();
+  updateBadge();
+  saveState();
+}
+
+const MAX_SEEN_IDS = 500;
+function trimSeenIds() {
+  if (seenIds.size <= MAX_SEEN_IDS) return;
+  const arr = Array.from(seenIds);
+  seenIds = new Set(arr.slice(arr.length - MAX_SEEN_IDS));
+}
+const MAX_ACK_IDS = 500;
+function trimAcknowledgedIds() {
+  if (acknowledgedIds.size <= MAX_ACK_IDS) return;
+  const arr = Array.from(acknowledgedIds);
+  acknowledgedIds = new Set(arr.slice(arr.length - MAX_ACK_IDS));
+}
+
+function dismissAlert(id) {
+  dismissedIds.add(id);
+  stopAlarmLoop(id);
+  renderList();
+  saveState();
+}
+function clearAllAlerts() {
+  notifItems.forEach(it => dismissedIds.add(it.id));
+  stopAllAlarms();
+  renderList();
+  saveState();
+}
+function updateBadge() {
+  // Pending = unread AND not dismissed AND not already acknowledged
+  // (i.e. not seen via an earlier panel-open). This is what makes the
+  // badge actually clear once you've opened the bubble.
+  const pending = notifItems.filter(it =>
+    !it.is_read && !dismissedIds.has(it.id) && !acknowledgedIds.has(it.id)
+  ).length;
+  const badge = document.getElementById('bubbleBadge');
+  badge.textContent = pending > 99 ? '99+' : pending;
+  badge.classList.toggle('visible', pending > 0);
+}
+
+// One-shot "pop" on the icon + badge, restarted on demand (removing then
+// re-adding the class forces the animation to replay even if it's already
+// mid-run) — called whenever a genuinely new notification arrives.
+function triggerPopBurst() {
+  const icon = document.getElementById('bubbleIcon');
+  const badge = document.getElementById('bubbleBadge');
+  [icon, badge].forEach(el => {
+    el.classList.remove('pop-burst');
+    void el.offsetWidth; // force reflow so the animation restarts
+    el.classList.add('pop-burst');
+  });
+}
+function esc(s) { return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+
+function renderList() {
+  const body = document.getElementById('alertsView');
+  const visible = notifItems.filter(it => !dismissedIds.has(it.id));
+  if (!visible.length) {
+    body.innerHTML = '<div class="empty-state" id="emptyState">No notifications yet.<br>Waiting for updates…</div>';
+    return;
+  }
+  body.innerHTML = '';
+  visible.forEach(it => {
+    const ringing = !!alarmLoopTimers[it.id];
+    const card = document.createElement('div');
+    card.className = 'alert-card' + (it.is_read ? ' read' : '') + (ringing ? ' ringing' : '') + (it.sla_state === 'overdue' ? ' sla-overdue' : '');
+
+    const top = document.createElement('div'); top.className = 'ac-top';
+    const badge = document.createElement('span');
+    badge.className = 'ac-badge ' + (it.is_read ? 'badge-read' : 'badge-new');
+    badge.textContent = it.is_read ? 'READ' : 'NEW';
+    const actions = document.createElement('div'); actions.className = 'ac-actions';
+    if (ringing) {
+      const stopBtn = document.createElement('button');
+      stopBtn.className = 'ac-stop'; stopBtn.textContent = 'Stop';
+      stopBtn.onclick = () => stopAlarmLoop(it.id);
+      actions.appendChild(stopBtn);
+    }
+    const dismissBtn = document.createElement('button');
+    dismissBtn.className = 'ac-dismiss'; dismissBtn.title = 'Dismiss'; dismissBtn.innerHTML = '&#x2715;';
+    dismissBtn.onclick = () => dismissAlert(it.id);
+    actions.appendChild(dismissBtn);
+    top.appendChild(badge); top.appendChild(actions);
+
+    const titleEl = document.createElement('div'); titleEl.className = 'ac-title';
+    titleEl.textContent = it.title || 'Notification';
+    const msgEl = document.createElement('div'); msgEl.className = 'ac-message';
+    msgEl.textContent = it.message || '';
+    const details = document.createElement('div'); details.className = 'ac-details';
+    const detailValues = [
+      ['Ticket', it.ticket_number || it.ticket_no || it.ticket_id],
+      ['Priority', it.priority],
+      ['Requester', it.requester_name || it.requester || it.customer_name],
+      ['Assignee', it.assignee_name || it.assignee],
+      ['Status', it.status || it.state]
+    ];
+    detailValues.forEach(([label, value]) => {
+      if (value === undefined || value === null || String(value).trim() === '') return;
+      const detail = document.createElement('span'); detail.className = 'ac-detail';
+      detail.textContent = label + ': ' + value;
+      details.appendChild(detail);
+    });
+    if (it.sla_kind) {
+      const slaDetail = document.createElement('span'); slaDetail.className = 'ac-detail';
+      slaDetail.textContent = (it.sla_kind === 'first_response' ? 'First response' : 'Resolution') + ': ' + (it.sla_state === 'overdue' ? 'OVERDUE' : 'Warning');
+      details.appendChild(slaDetail);
+    }
+    const countdown = it.sla_due_at ? document.createElement('div') : null;
+    if (it.sla_due_at) {
+      countdown.className = 'sla-countdown' + (it.sla_state === 'overdue' ? '' : ' sla-warning-countdown');
+      countdown.dataset.dueAt = it.sla_due_at;
+      countdown.textContent = formatSlaCountdown(it.sla_due_at, it.sla_state);
+    }
+
+    const meta = document.createElement('div'); meta.className = 'ac-meta';
+    const timeSpan = document.createElement('span'); timeSpan.textContent = it.created_at || '';
+    meta.appendChild(timeSpan);
+    if (it.open_url) {
+      const openBtn = document.createElement('button');
+      openBtn.className = 'ac-open'; openBtn.textContent = 'View ↗';
+      openBtn.title = 'Open ticket in an expanded window — status, conversation, reply, attachments';
+      openBtn.onclick = () => openNotif(it.open_url);
+      meta.appendChild(openBtn);
+
+      const extBtn = document.createElement('button');
+      extBtn.className = 'ac-open-ext'; extBtn.innerHTML = '&#127760;';
+      extBtn.title = 'Open in your web browser instead';
+      extBtn.onclick = () => openNotifExternal(it.open_url);
+      meta.appendChild(extBtn);
+    }
+    card.appendChild(top); card.appendChild(titleEl); card.appendChild(msgEl);
+    if (details.children.length) card.appendChild(details);
+    if (countdown) card.appendChild(countdown);
+    card.appendChild(meta);
+    body.appendChild(card);
+  });
+  if (!slaCountdownTimer) slaCountdownTimer = setInterval(updateSlaCountdowns, 1000);
+}
+
+function formatSlaCountdown(dueAt, state) {
+  const remaining = new Date(dueAt).getTime() - Date.now();
+  if (remaining <= 0) return 'OVERDUE by ' + formatDuration(-remaining);
+  return 'Due in ' + formatDuration(remaining);
+}
+function formatDuration(ms) {
+  const totalSeconds = Math.floor(ms / 1000);
+  const days = Math.floor(totalSeconds / 86400);
+  const hours = Math.floor((totalSeconds % 86400) / 3600);
+  const minutes = Math.floor((totalSeconds % 3600) / 60);
+  const seconds = totalSeconds % 60;
+  return (days ? days + 'd ' : '') + (hours ? hours + 'h ' : '') + minutes + 'm ' + seconds + 's';
+}
+function updateSlaCountdowns() {
+  document.querySelectorAll('.sla-countdown[data-due-at]').forEach(el => {
+    el.textContent = formatSlaCountdown(el.dataset.dueAt, el.classList.contains('sla-warning-countdown') ? 'warning' : 'overdue');
+  });
+}
+
+let previewMaxCount = 5;
+let previewQueue = [];
+const PREVIEW_CARD_H = 64, PREVIEW_GAP = 6, PREVIEW_STACK_W = 168, PREVIEW_SIDE_MARGIN = 10;
+
+function addPreviewsForBatch(items) {
+  if (panelOpen || !items.length) return;
+  items.slice(0, previewMaxCount).forEach(addSinglePreview);
+}
+
+function addSinglePreview(item) {
+  while (previewQueue.length >= previewMaxCount) {
+    const oldest = previewQueue.shift();
+    clearTimeout(oldest.timerId);
+  }
+  const uid = 'pv' + Date.now() + Math.random().toString(36).slice(2, 6);
+  const expiryAt = Date.now() + previewAutoHideMs;
+  const entry = { uid, item, timerId: null, expiryAt, durationMs: previewAutoHideMs };
+  entry.timerId = setTimeout(() => removePreview(uid), previewAutoHideMs);
+  previewQueue.push(entry);
+  rebuildPreviewStack();
+}
+
+function removePreview(uid) {
+  const idx = previewQueue.findIndex(p => p.uid === uid);
+  if (idx > -1) { clearTimeout(previewQueue[idx].timerId); previewQueue.splice(idx, 1); }
+  rebuildPreviewStack();
+}
+
+function clearAllPreviews() {
+  previewQueue.forEach(p => clearTimeout(p.timerId));
+  previewQueue = [];
+  rebuildPreviewStack();
+}
+
+function rebuildPreviewStack() {
+  const stackEl = document.getElementById('previewStack');
+  if (previewQueue.length === 0) {
+    stackEl.innerHTML = '';
+    stackEl.style.display = 'none';
+    if (!panelOpen) window.bubbleAPI.collapseBubble();
+    return;
+  }
+  stackEl.style.display = 'flex';
+  const ordered = previewQueue.slice().reverse();
+  stackEl.innerHTML = ordered.map(p => {
+    const remainingS = Math.max(0, Math.ceil((p.expiryAt - Date.now()) / 1000));
+    return '<div class="preview-card" data-puid="' + p.uid + '">' +
+      '<button class="pc-dismiss" onclick="removePreview(\'' + p.uid + '\')" title="Dismiss">&#x2715;</button>' +
+      '<div class="pc-title">' + esc(p.item.title || 'Notification') + '</div>' +
+      '<div class="pc-message">' + esc(p.item.message || '') + '</div>' +
+      '<div class="pc-timer-bar"><div class="pc-timer-fill" style="width:100%"></div></div>' +
+    '</div>';
+  }).join('');
+
+  const n = previewQueue.length;
+  const stackHeight = n * PREVIEW_CARD_H + (n - 1) * PREVIEW_GAP + 12;
+  window.bubbleAPI.showPreviewStack(PREVIEW_STACK_W + PREVIEW_SIDE_MARGIN, stackHeight);
+}
+
+setInterval(() => {
+  if (!previewQueue.length) return;
+  previewQueue.forEach(p => {
+    const card = document.querySelector('[data-puid="' + p.uid + '"]');
+    if (!card) return;
+    const remainingMs = Math.max(0, p.expiryAt - Date.now());
+    const pct = Math.max(0, Math.min(100, (remainingMs / p.durationMs) * 100));
+    const fill = card.querySelector('.pc-timer-fill');
+    if (fill) fill.style.width = pct + '%';
+  });
+}, 250);
+
+// ── Click-through control ──
+let mouseInteractive = null;
+
+function setMouseInteractive(shouldBeInteractive) {
+  if (shouldBeInteractive === mouseInteractive) return;
+  mouseInteractive = shouldBeInteractive;
+  window.bubbleAPI.setIgnoreMouse(!shouldBeInteractive);
+}
+
+function isPointInBubbleCircle(x, y) {
+  const bubbleEl = document.getElementById('bubble');
+  const rect = bubbleEl.getBoundingClientRect();
+  const cx = rect.left + rect.width / 2;
+  const cy = rect.top + rect.height / 2;
+  const ringPad = parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--ring-pad')) || 0;
+  const effectiveRadius = rect.width / 2 + ringPad + 4;
+  const dx = x - cx, dy = y - cy;
+  return (dx * dx + dy * dy) <= effectiveRadius * effectiveRadius;
+}
+
+function isPointInPreviewStack(x, y) {
+  const stackEl = document.getElementById('previewStack');
+  if (!stackEl || stackEl.style.display === 'none') return false;
+  const rect = stackEl.getBoundingClientRect();
+  if (rect.width === 0 || rect.height === 0) return false;
+  return x >= rect.left && x <= rect.right && y >= rect.top && y <= rect.bottom;
+}
+
+document.addEventListener('mousemove', (e) => {
+  if (isDraggingAny) return;
+  if (panelOpen) { setMouseInteractive(true); return; }
+  setMouseInteractive(isPointInBubbleCircle(e.clientX, e.clientY) || isPointInPreviewStack(e.clientX, e.clientY));
+});
+
+window.bubbleAPI.setIgnoreMouse(true);
+mouseInteractive = false;
+
+// ── Reliability: recover instantly from sleep/minimize/dropped Wi-Fi ──
+document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible' && loggedIn) poll(); });
+window.addEventListener('online', () => { if (loggedIn) poll(); });
+window.addEventListener('focus', () => { if (loggedIn) poll(); });
+
+function init() {
+  loadState();
+  protectRingtoneDropdowns();
+  window.ghzAPI.loadCustomSound().then(result => {
+    if (!result || !result.success || !Array.isArray(result.sounds)) return;
+    result.sounds.forEach(addCustomSound);
+    ensureCustomSoundOptions();
+    if (typeSoundMap.sla === '__custom__' && result.sounds[0]) {
+      typeSoundMap.sla = '__custom__:' + result.sounds[0].id;
+    }
+    if (document.getElementById('ringtoneSelect').value === '__custom__' && result.sounds[0]) {
+      document.getElementById('ringtoneSelect').value = '__custom__:' + result.sounds[0].id;
+    }
+    const slaSelect = document.getElementById('typeSound_sla');
+    if (slaSelect && typeSoundMap.sla.startsWith('__custom__:')) slaSelect.value = typeSoundMap.sla;
+    saveState();
+  }).catch(() => {});
+  renderThemeSwatches();
+  document.documentElement.style.setProperty('--accent', accentColor);
+
+  window.ghzAPI.checkLoginStatus().then(res => {
+    loggedIn = !!res.loggedIn;
+    if (loggedIn) {
+      document.getElementById('accountEmailLbl').textContent = res.email || 'signed in';
+      showAlertsView();
+      renderList(); updateBadge();
+      // Start polling — the first tick fires after one interval, which avoids
+      // stacking a fetch immediately on top of the login-check network activity.
+      // (Previously poll() was called here AND the interval was set, causing two
+      // overlapping fetch cycles every time the app started.)
+      if (!pollTimer) pollTimer = setInterval(poll, pollInterval);
+    } else {
+      showLoginView();
+      setConnStatus(false, 'not signed in');
+      openPanel();
+    }
+  });
+}
+init();
+</script>
+</body>
+</html>

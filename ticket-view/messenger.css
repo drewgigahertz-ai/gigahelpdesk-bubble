@@ -1,0 +1,270 @@
+/* ============================================================
+   GigaHelpDesk Bubble — Messenger-style ticket view override
+   Injected at runtime into the real ticket page (see main.js).
+
+   Everything structural/visual is scoped under html.ghz-messenger-view
+   so "Classic View" is a true, complete revert to the site's own
+   layout — not just a font-size change. Only the slim toolbar shell
+   and its "Chat View" button stay unscoped, since that's the one
+   control that must stay reachable in both modes.
+   ============================================================ */
+
+html.ghz-messenger-view, html.ghz-messenger-view body {
+  height: 100%;
+  overflow: hidden;
+  font-size: 13px;
+  background: #f0f2f5 !important;
+}
+html.ghz-messenger-view ::-webkit-scrollbar { width: 8px; height: 8px; }
+html.ghz-messenger-view ::-webkit-scrollbar-thumb { background: #c9ccd1; border-radius: 8px; }
+html.ghz-messenger-view ::-webkit-scrollbar-track { background: transparent; }
+
+/* ---------- App shell: collapse the full AdminLTE sidebar/menu
+   chrome down to a slim rail — it only ever shows 3 links and eats
+   ~230px in a panel that is only ~900px wide to begin with. ---------- */
+html.ghz-messenger-view .wrapper { height: 100%; }
+html.ghz-messenger-view .main-header.navbar { padding: 2px 6px !important; min-height: 34px; }
+html.ghz-messenger-view .main-header .nav-link { padding: 4px 8px !important; font-size: 12px; }
+html.ghz-messenger-view.sidebar-collapse .main-sidebar,
+html.ghz-messenger-view .sidebar-collapse .main-sidebar { box-shadow: 1px 0 4px rgba(0,0,0,.15); }
+
+/* ---------- Content shell becomes a full-height flex column so the
+   composer can sit pinned to the bottom and only the message list
+   scrolls, like a real chat app. ---------- */
+html.ghz-messenger-view .content-wrapper {
+  display: flex; flex-direction: column;
+  height: calc(100vh - 34px) !important;
+  min-height: 0;
+  background: #f0f2f5 !important;
+  margin-left: 0 !important;
+}
+html.ghz-messenger-view.sidebar-collapse .content-wrapper { margin-left: 4.6rem !important; }
+html.ghz-messenger-view section.content.pt-3 {
+  padding-top: 0 !important; flex: 1; min-height: 0; display: flex; flex-direction: column;
+}
+html.ghz-messenger-view .content > .container-fluid {
+  flex: 1; min-height: 0; display: flex; flex-direction: column; padding: 0 !important;
+}
+
+/* ---------- Sticky compact ticket header ---------- */
+html.ghz-messenger-view .admin-ticket-summary-card {
+  border-radius: 0 !important; margin: 0 !important; flex: 0 0 auto;
+  box-shadow: 0 1px 2px rgba(0,0,0,.08); border: none; border-bottom: 1px solid #e4e6ea;
+}
+html.ghz-messenger-view .admin-ticket-summary-card .card-body { padding: 8px 12px !important; }
+html.ghz-messenger-view .admin-ticket-summary-card .text-uppercase.text-muted.font-weight-bold.small { display: none; }
+html.ghz-messenger-view .admin-ticket-summary-number { font-size: 15px !important; line-height: 1.2; }
+html.ghz-messenger-view .admin-ticket-summary-number-row { gap: 6px; margin-bottom: 2px !important; }
+html.ghz-messenger-view .admin-ticket-summary-subject { font-size: 12px !important; color: #444; margin-bottom: 2px !important; font-weight: 600; }
+html.ghz-messenger-view .admin-ticket-summary-meta { font-size: 10.5px !important; color: #8a8d91; }
+html.ghz-messenger-view .admin-ticket-summary-state .badge { font-size: 9px !important; padding: 2px 6px !important; }
+html.ghz-messenger-view .admin-ticket-summary-card .small.text-muted.mt-2 { display: none; } /* duplicated in the Details drawer */
+html.ghz-messenger-view .admin-ticket-summary-actions { margin-top: 0 !important; }
+html.ghz-messenger-view .admin-ticket-summary-actions .btn { font-size: 10.5px !important; padding: 3px 8px !important; margin-bottom: 0 !important; }
+
+/* ---------- Slim toolbar shell (built by JS) — UNSCOPED on purpose:
+   it must stay visible and reachable in both Chat and Classic view.
+   In Classic view every button except the mode switch itself hides,
+   so "Ticket/Requester/SLA Info", "Route/SLA & History" and "Files"
+   are fully OFF, leaving just a small "Chat View" pill to switch back. ---------- */
+.ghz-toolbar {
+  display: flex; align-items: center; gap: 6px; flex-wrap: wrap;
+  padding: 6px 12px; background: #fff; border-bottom: 1px solid #e4e6ea; flex: 0 0 auto;
+}
+html:not(.ghz-messenger-view) .ghz-toolbar {
+  background: transparent; border-bottom: none; box-shadow: none;
+  justify-content: flex-end; padding: 4px 8px;
+}
+html:not(.ghz-messenger-view) .ghz-toolbar > *:not(.ghz-classic-btn) { display: none !important; }
+.ghz-toolbar-spacer { flex: 1; }
+.ghz-toggle-btn {
+  font: 600 10.5px/1 inherit; padding: 5px 10px; border-radius: 14px;
+  border: 1px solid #d8dade; background: #f5f6f7; color: #444; cursor: pointer;
+  display: inline-flex; align-items: center; gap: 5px; white-space: nowrap;
+}
+.ghz-toggle-btn:hover { background: #ebedf0; }
+.ghz-toggle-btn.ghz-active { background: #e7f3ff; border-color: #0084ff; color: #0084ff; }
+.ghz-toggle-btn .ghz-count {
+  background: rgba(0,0,0,.12); border-radius: 9px; padding: 0 5px; font-size: 9.5px;
+}
+.ghz-toggle-btn.ghz-active .ghz-count { background: rgba(0,132,255,.18); }
+.ghz-classic-btn { margin-left: auto; opacity: .6; }
+.ghz-classic-btn:hover { opacity: 1; }
+
+/* ---------- Collapsible "Ticket Info / SLA" drawer (Ticket Details,
+   Requester Details, Assignment, SLA KPI cards) — collapsed by
+   default, nothing removed, just tucked away. Classic view drops the
+   scope below, so the wrapper becomes a plain, always-expanded div. ---------- */
+html.ghz-messenger-view .ghz-info-rows {
+  max-height: 0; overflow: hidden; flex: 0 0 auto;
+  background: #f7f8fa; border-bottom: 0 solid #e4e6ea;
+  transition: max-height .2s ease;
+}
+html.ghz-messenger-view .ghz-info-rows.ghz-open { max-height: 70vh; overflow-y: auto; border-bottom-width: 1px; }
+html.ghz-messenger-view .ghz-info-rows .row { margin: 0 !important; padding: 8px 10px 2px; }
+html.ghz-messenger-view .ghz-info-rows .card { margin-bottom: 8px !important; box-shadow: none; border: 1px solid #e4e6ea; }
+html.ghz-messenger-view .ghz-info-rows .card-header { padding: 6px 10px !important; }
+html.ghz-messenger-view .ghz-info-rows .card-title { font-size: 11.5px !important; }
+html.ghz-messenger-view .ghz-info-rows .card-body { padding: 8px 10px !important; }
+html.ghz-messenger-view .ghz-info-rows .ticket-overview-item {
+  font-size: 11.5px !important; padding: 3px 0 !important;
+  display: flex; justify-content: space-between; gap: 10px;
+  border-bottom: 1px dashed #ececec;
+}
+html.ghz-messenger-view .ghz-info-rows .ticket-overview-item:last-child { border-bottom: none; }
+html.ghz-messenger-view .ghz-info-rows .ticket-detail-badge { font-size: 10px !important; }
+html.ghz-messenger-view .ghz-info-rows .list-kpi-value { font-size: 14px !important; }
+html.ghz-messenger-view .ghz-info-rows .list-kpi-label { font-size: 9.5px !important; }
+html.ghz-messenger-view .ghz-info-rows .list-summary-box .card-body { padding: 8px 10px !important; }
+html.ghz-messenger-view .ghz-info-rows .list-icon-box { width: 30px !important; height: 30px !important; font-size: 12px !important; }
+html.ghz-messenger-view .ghz-info-rows .ticket-sla-kpi-stats { font-size: 10.5px !important; }
+html.ghz-messenger-view .ghz-info-rows small, html.ghz-messenger-view .ghz-info-rows .form-text { font-size: 10px !important; }
+html.ghz-messenger-view .ghz-info-rows .select2-container { font-size: 11.5px; }
+
+/* ---------- Main chat row: conversation + collapsible Route/SLA &
+   History drawer, stacked (not side-by-side) so a fixed-width side
+   rail never leaves a slab of empty space next to the chat when
+   closed, at any window size. Classic view drops the scope, so this
+   reverts to the site's normal side-by-side col-lg-8 / col-lg-4. ---------- */
+html.ghz-messenger-view .ghz-chat-row { display: flex; flex-direction: column; flex: 1; min-height: 0; margin: 0 !important; width: 100% !important; }
+html.ghz-messenger-view .ghz-chat-main {
+  flex: 1 1 auto !important; flex-basis: 0 !important; min-width: 0; min-height: 0; width: auto !important; max-width: 100% !important;
+  display: flex; flex-direction: column;
+  padding: 0 !important; order: 2;
+}
+html.ghz-messenger-view .ghz-chat-sidebar {
+  order: 1;
+  flex: 0 0 auto !important; width: 100% !important; max-width: 100% !important;
+  max-height: 0; overflow: hidden;
+  border-top: 0 solid #e4e6ea; background: #fff; transition: max-height .18s ease;
+  padding: 0 !important;
+}
+html.ghz-messenger-view .ghz-chat-sidebar.ghz-open {
+  max-height: 34vh; overflow-y: auto; border-top-width: 1px; padding: 10px !important;
+}
+html.ghz-messenger-view .ghz-chat-sidebar .card { box-shadow: none; border: none; }
+html.ghz-messenger-view .ghz-chat-sidebar .card-header { padding: 4px 0 8px !important; }
+html.ghz-messenger-view .ghz-chat-sidebar .card-title { font-size: 11.5px !important; }
+html.ghz-messenger-view .ghz-chat-sidebar .nav-tabs .nav-link { font-size: 10.5px !important; padding: 5px 8px !important; }
+html.ghz-messenger-view .ghz-chat-sidebar dl.row dt, html.ghz-messenger-view .ghz-chat-sidebar dl.row dd { font-size: 10.5px !important; margin-bottom: 4px !important; }
+html.ghz-messenger-view .ghz-chat-sidebar .ticket-sla-route-label { font-size: 9.5px !important; }
+html.ghz-messenger-view .ghz-chat-sidebar .ticket-sla-route-item strong { font-size: 10.5px !important; }
+html.ghz-messenger-view .ghz-chat-sidebar .ticket-sla-credit-meta, html.ghz-messenger-view .ghz-chat-sidebar .ticket-sla-route-submeta { font-size: 9.5px !important; }
+
+/* ---------- Conversation card becomes the scrolling message pane ---------- */
+html.ghz-messenger-view .ghz-chat-main > .row, html.ghz-messenger-view .ghz-chat-main > .col-lg-8 { display: contents; }
+html.ghz-messenger-view .ghz-conversation-card {
+  flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column;
+  margin: 0 !important; border: none !important; border-radius: 0 !important; box-shadow: none !important;
+  background: transparent !important;
+}
+html.ghz-messenger-view .ghz-conversation-card > .card-header { display: none; }
+html.ghz-messenger-view .ghz-conversation-body {
+  flex: 1 1 auto; min-height: 0; overflow-y: auto;
+  padding: 10px 14px !important; display: flex; flex-direction: column; gap: 2px;
+}
+
+/* Original request, shown as the pinned first bubble of the thread */
+html.ghz-messenger-view .ghz-original-request {
+  background: #fff !important; border: 1px solid #e4e6ea !important; border-radius: 12px;
+  padding: 8px 12px !important; margin-bottom: 10px !important; font-size: 12px;
+}
+html.ghz-messenger-view .ghz-original-request .font-weight-bold { font-size: 10.5px; text-transform: uppercase; letter-spacing: .02em; color: #8a8d91; margin-bottom: 3px !important; }
+
+/* Nested "Initial Details" card — only ever hidden by JS when it is
+   confirmed empty ("No initial details were submitted"); otherwise
+   it's left visible, just compacted. */
+html.ghz-messenger-view .ghz-conversation-body .card.border.mb-3 { border: 1px solid #e4e6ea !important; border-radius: 12px !important; margin-bottom: 10px !important; }
+html.ghz-messenger-view .ghz-conversation-body .card.border.mb-3 .card-header { padding: 5px 10px !important; }
+html.ghz-messenger-view .ghz-conversation-body .card.border.mb-3 .card-title { font-size: 10.5px !important; }
+html.ghz-messenger-view .ghz-conversation-body .card.border.mb-3 .card-body { padding: 6px 10px !important; font-size: 11.5px !important; }
+
+/* ---------- Messenger-style chat bubbles ----------
+   The site already tags each entry with is-incoming / is-outgoing /
+   is-system, which is exactly what makes this possible with CSS
+   alone — no server-side change needed. Scoped, so Classic view
+   falls back to whatever the site itself renders for these. */
+html.ghz-messenger-view .ticket-thread-item { display: flex; align-items: flex-end; gap: 6px; margin: 2px 0; max-width: 100%; }
+html.ghz-messenger-view .ticket-thread-avatar { flex: 0 0 auto; }
+html.ghz-messenger-view .ticket-thread-avatar-image, html.ghz-messenger-view .ticket-thread-avatar-fallback {
+  width: 24px !important; height: 24px !important; font-size: 10px !important;
+}
+html.ghz-messenger-view .ticket-thread-bubble { max-width: 74%; min-width: 0; }
+html.ghz-messenger-view .ticket-thread-header { display: flex; gap: 6px; align-items: baseline; margin-bottom: 2px; }
+html.ghz-messenger-view .ticket-thread-name { font-size: 10.5px !important; }
+html.ghz-messenger-view .ticket-thread-meta { font-size: 9.5px !important; color: #8a8d91; display: flex; gap: 5px; align-items: center; }
+html.ghz-messenger-view .ticket-thread-meta .badge { font-size: 8.5px !important; padding: 1px 5px !important; }
+html.ghz-messenger-view .ticket-comment-body {
+  font-size: 12.5px; line-height: 1.35; padding: 7px 11px; border-radius: 16px;
+  background: #e4e6eb; color: #050505; word-break: break-word; white-space: pre-wrap;
+}
+
+/* Incoming (requester) — left aligned, gray bubble */
+html.ghz-messenger-view .ticket-thread-item.is-incoming { flex-direction: row; justify-content: flex-start; }
+html.ghz-messenger-view .ticket-thread-item.is-incoming .ticket-thread-header { justify-content: flex-start; }
+
+/* Outgoing (support reply) — right aligned, blue bubble like Messenger */
+html.ghz-messenger-view .ticket-thread-item.is-outgoing { flex-direction: row-reverse; justify-content: flex-start; margin-left: auto; }
+html.ghz-messenger-view .ticket-thread-item.is-outgoing .ticket-thread-bubble { text-align: right; }
+html.ghz-messenger-view .ticket-thread-item.is-outgoing .ticket-thread-header { justify-content: flex-end; }
+html.ghz-messenger-view .ticket-thread-item.is-outgoing .ticket-comment-body {
+  background: #0084ff; color: #fff; text-align: left; margin-left: auto;
+}
+
+/* System / activity log entries — centered small pill, Messenger-style
+   "X changed the status" divider, not a chat bubble */
+html.ghz-messenger-view .ticket-thread-item.is-system {
+  justify-content: center; margin: 6px 0;
+}
+html.ghz-messenger-view .ticket-thread-item.is-system .ticket-thread-avatar { display: none; }
+html.ghz-messenger-view .ticket-thread-item.is-system .ticket-thread-bubble { max-width: 90%; }
+html.ghz-messenger-view .ticket-thread-item.is-system .ticket-thread-header { justify-content: center; }
+html.ghz-messenger-view .ticket-thread-item.is-system .ticket-thread-name { display: none; }
+html.ghz-messenger-view .ticket-thread-item.is-system .ticket-comment-body {
+  background: transparent; color: #8a8d91; text-align: center; font-size: 10.5px !important;
+  padding: 2px 8px;
+}
+html.ghz-messenger-view .ticket-thread-item.is-system .ticket-thread-meta { justify-content: center; }
+
+/* Consecutive-message grouping (added by JS): same sender back-to-back
+   collapses the repeated avatar/name, Messenger-style, to save space */
+html.ghz-messenger-view .ticket-thread-item.ghz-grouped { margin-top: -2px; }
+html.ghz-messenger-view .ticket-thread-item.ghz-grouped .ticket-thread-avatar { visibility: hidden; }
+html.ghz-messenger-view .ticket-thread-item.ghz-grouped .ticket-thread-header { display: none; }
+
+/* ---------- Composer pinned to the bottom, Messenger-style pill input ---------- */
+html.ghz-messenger-view .ghz-composer-card {
+  flex: 0 0 auto; margin: 0 !important; border: none !important; border-top: 1px solid #e4e6ea !important;
+  border-radius: 0 !important; box-shadow: none !important; background: #fff !important;
+}
+html.ghz-messenger-view .ghz-composer-card .card-header { display: none; }
+html.ghz-messenger-view .ghz-composer-card .card-body { padding: 8px 12px !important; }
+html.ghz-messenger-view .ghz-composer-card form { display: flex; flex-direction: column; gap: 4px; }
+html.ghz-messenger-view .ghz-composer-card textarea#body {
+  height: 38px !important; min-height: 38px; max-height: 120px; resize: vertical;
+  border-radius: 18px !important; padding: 8px 14px !important; font-size: 12.5px !important;
+  background: #f0f2f5; border: 1px solid #e4e6ea;
+}
+html.ghz-messenger-view .ghz-composer-card .form-group { margin-bottom: 0 !important; }
+html.ghz-messenger-view .ghz-composer-card label[for="body"] { display: none; }
+html.ghz-messenger-view .ghz-composer-card .form-group:has(> label[for="attachments"]) { order: 3; }
+html.ghz-messenger-view .ghz-composer-card label[for="attachments"] { font-size: 10.5px !important; margin-bottom: 2px !important; color: #8a8d91; }
+html.ghz-messenger-view .ghz-composer-card input#attachments { font-size: 10.5px !important; }
+html.ghz-messenger-view .ghz-composer-card .form-text { font-size: 9.5px !important; margin: 0 !important; }
+html.ghz-messenger-view .ghz-composer-card .alert.alert-light.border {
+  padding: 4px 8px !important; font-size: 9.5px !important; margin: 0 !important; background: transparent !important; border: none !important; color: #8a8d91;
+}
+html.ghz-messenger-view .ghz-composer-card .d-flex.align-items-center.flex-wrap { justify-content: flex-end; }
+html.ghz-messenger-view .ghz-composer-card button[data-ticket-comment-submit] {
+  border-radius: 16px !important; padding: 6px 16px !important; font-size: 11.5px !important; font-weight: 600;
+  background: #0084ff !important; border-color: #0084ff !important;
+}
+
+/* ---------- Files Attached — collapsed into a small chip by default ---------- */
+html.ghz-messenger-view .ghz-files-card {
+  flex: 0 0 auto; margin: 0 !important; border: none !important; border-top: 1px solid #e4e6ea !important;
+  border-radius: 0 !important; box-shadow: none !important; max-height: 0; overflow: hidden; transition: max-height .18s ease;
+}
+html.ghz-messenger-view .ghz-files-card.ghz-open { max-height: 40vh; overflow-y: auto; }
+html.ghz-messenger-view .ghz-files-card .card-header { display: none; }
+html.ghz-messenger-view .ghz-files-card .card-body { padding: 8px 12px !important; font-size: 11.5px !important; }
