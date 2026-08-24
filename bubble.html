@@ -331,6 +331,13 @@
       <button class="icon-btn" onclick="handleLogout()" title="Sign out">&#9099;</button>
     </div>
 
+    <div class="sd-row">
+      <span class="sd-lbl">App updates</span>
+      <span class="sd-val" id="updateStatus">Checking...</span>
+      <button class="icon-btn" id="checkUpdateBtn" onclick="checkForUpdates()" title="Check for updates">&#8635;</button>
+      <button class="icon-btn" id="installUpdateBtn" onclick="installUpdate()" title="Restart and install update" style="display:none;">&#9654;</button>
+    </div>
+
     <div class="sd-lbl" style="margin-bottom:4px;">🎨 Theme Color</div>
     <div class="theme-row" id="themeRow">
       <div class="theme-custom-wrap" title="Pick any color">
@@ -918,6 +925,36 @@ function closePanel(afterClose) {
   }, 180);
 }
 function toggleSettingsDrawer() { document.getElementById('settingsDrawer').classList.toggle('open'); }
+
+function renderUpdateState(state) {
+  const status = document.getElementById('updateStatus');
+  const checkBtn = document.getElementById('checkUpdateBtn');
+  const installBtn = document.getElementById('installUpdateBtn');
+  if (!status || !state) return;
+  if (state.error) status.textContent = 'Update check failed';
+  else if (state.downloaded) status.textContent = 'Ready to install ' + (state.version || 'update');
+  else if (state.checking) status.textContent = 'Checking...';
+  else if (state.available) status.textContent = 'Downloading ' + (state.version || 'update') + '...';
+  else status.textContent = 'Up to date';
+  if (checkBtn) checkBtn.disabled = !!state.checking;
+  if (installBtn) installBtn.style.display = state.downloaded ? '' : 'none';
+  if (state.error && status) status.title = state.error;
+}
+
+function checkForUpdates() {
+  renderUpdateState({ checking: true });
+  window.ghzAPI.checkForUpdate().then(renderUpdateState).catch(() => renderUpdateState({ error: 'Update check failed' }));
+}
+
+function installUpdate() {
+  window.ghzAPI.installUpdate().then(renderUpdateState).catch(() => {});
+}
+
+setInterval(() => {
+  if (document.getElementById('settingsDrawer').classList.contains('open')) {
+    window.ghzAPI.getUpdateState().then(renderUpdateState).catch(() => {});
+  }
+}, 2000);
 
 function hideBubble() {
   if (panelOpen) {
@@ -1618,6 +1655,7 @@ window.addEventListener('focus', () => { if (loggedIn) poll(); });
 
 function init() {
   loadState();
+  window.ghzAPI.getUpdateState().then(renderUpdateState).catch(() => {});
   protectRingtoneDropdowns();
   window.ghzAPI.loadCustomSound().then(result => {
     if (!result || !result.success || !Array.isArray(result.sounds)) return;

@@ -21,6 +21,7 @@ contextBridge.exposeInMainWorld('ghzAPI', {
   renameCustomSound: (id, name) => ipcRenderer.invoke('ghz:rename-custom-sound', { id, name }),
   deleteCustomSound: (id) => ipcRenderer.invoke('ghz:delete-custom-sound', { id }),
   getUpdateState: () => ipcRenderer.invoke('ghz:update-state'),
+  checkForUpdate: () => ipcRenderer.invoke('ghz:check-for-update'),
   installUpdate: () => ipcRenderer.invoke('ghz:install-update'),
   openExternal: (url) => ipcRenderer.invoke('ghz:open-external', url),
   showTicketPanel: (url, width, height, headerHeight) =>

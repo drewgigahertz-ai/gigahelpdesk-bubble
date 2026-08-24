@@ -62,10 +62,11 @@ function configureAutoUpdates() {
   autoUpdater.autoDownload = true;
   autoUpdater.autoInstallOnAppQuit = true;
   autoUpdater.setFeedURL(UPDATE_FEED_URL ? { provider: 'generic', url: UPDATE_FEED_URL } : GITHUB_UPDATE_CONFIG);
-  autoUpdater.on('checking-for-update', () => { updateState.checking = true; });
-  autoUpdater.on('update-available', info => { updateState = { ...updateState, checking: false, available: true, version: info.version }; });
-  autoUpdater.on('update-downloaded', info => { updateState = { ...updateState, checking: false, downloaded: true, version: info.version }; });
-  autoUpdater.on('error', err => { updateState = { ...updateState, checking: false, error: err.message }; });
+  autoUpdater.on('checking-for-update', () => { updateState = { ...updateState, checking: true, error: null }; });
+  autoUpdater.on('update-not-available', () => { updateState = { ...updateState, checking: false, available: false, error: null }; });
+  autoUpdater.on('update-available', info => { updateState = { ...updateState, checking: false, available: true, version: info.version, error: null }; });
+  autoUpdater.on('update-downloaded', info => { updateState = { ...updateState, checking: false, downloaded: true, version: info.version, error: null }; });
+  autoUpdater.on('error', err => { updateState = { ...updateState, checking: false, error: err.message || String(err) }; });
   autoUpdater.checkForUpdates().catch(() => {});
 }
 
@@ -249,6 +250,7 @@ if (!gotLock) {
 
   app.whenReady().then(() => {
     try {
+      removeLegacyCustomSound();
       createWindow();
       createTray();
       setupDownloadAutoOpen();
@@ -410,6 +412,12 @@ function legacyCustomSoundNamePath() {
   return path.join(customSoundsDir(), 'sla-warning-name.txt');
 }
 
+function removeLegacyCustomSound() {
+  [legacyCustomSoundFilePath(), legacyCustomSoundNamePath()].forEach(file => {
+    try { if (fs.existsSync(file)) fs.unlinkSync(file); } catch (e) {}
+  });
+}
+
 ipcMain.handle('ghz:save-custom-sound', async (e, { name, data }) => {
   try {
     const bytes = Buffer.from(data);
@@ -484,6 +492,16 @@ ipcMain.handle('ghz:delete-custom-sound', async (e, { id }) => {
 });
 
 ipcMain.handle('ghz:update-state', async () => updateState);
+ipcMain.handle('ghz:check-for-update', async () => {
+  if (updateState.checking) return updateState;
+  try {
+    updateState = { ...updateState, checking: true, error: null };
+    await autoUpdater.checkForUpdates();
+  } catch (err) {
+    updateState = { ...updateState, checking: false, error: err.message || String(err) };
+  }
+  return updateState;
+});
 ipcMain.handle('ghz:install-update', async () => {
   if (!updateState.downloaded) return { success: false, message: 'No update downloaded' };
   autoUpdater.quitAndInstall();
