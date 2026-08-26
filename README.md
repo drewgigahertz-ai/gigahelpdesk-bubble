@@ -153,10 +153,9 @@ npm run dist
   uses different labels or only renders SLA values through JavaScript after
   load, update `parseDateNearLabel()` / `extractTicketSla()` in `main.js`.
 
-- SLA countdowns use Monday-Friday, 09:00-17:00 local business time when the
-  ticket exposes a duration instead of a calculated due date. Warnings trigger
-  at 80% elapsed, and alerts show warning or overdue state with a live
-  countdown.
+- SLA countdowns use continuous elapsed time when the ticket exposes a
+  duration instead of a calculated due date. Warnings trigger at 80% elapsed,
+  and alerts show warning or overdue state with a live countdown.
 - Custom audio files are stored separately under the user's app data folder.
   Settings includes a sound library where files can be renamed or deleted;
   each filename is available independently in the notification sound menus.

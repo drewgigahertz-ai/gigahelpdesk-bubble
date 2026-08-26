@@ -228,6 +228,9 @@
     border:0.5px solid var(--border); border-radius:6px; padding:6px 9px; margin-bottom:8px; }
   .mode-lbl { font-size:10px; font-weight:600; }
   .mode-desc { font-size:9px; color: var(--text2); word-break:break-word; }
+  .sd-hint { display:flex; align-items:flex-start; gap:6px; padding:7px 8px; margin:0 0 8px; color:var(--text2); background:var(--bg3); border-left:3px solid var(--accent); border-radius:0 5px 5px 0; font-size:9.5px; line-height:1.35; }
+  .sd-hint-icon { color:var(--accent); font-size:11px; line-height:1.2; }
+  .sd-hint strong { color:var(--text); font-weight:700; }
   .toggle-switch { position:relative; width:34px; height:20px; flex-shrink:0; }
   .toggle-switch input { opacity:0; width:0; height:0; }
   .toggle-slider { position:absolute; inset:0; background:#cbd5e1; border-radius:999px; cursor:pointer; transition: background 0.2s; }
@@ -399,7 +402,10 @@
     </div>
 
     <div class="sd-lbl" style="margin-top:12px; margin-bottom:6px;">🎵 Sound Per Notification Type</div>
-    <div class="sd-hint" style="margin-bottom:8px;">Repeating alarms: Available to accept and SLA warnings only.</div>
+    <div class="sd-hint">
+      <span class="sd-hint-icon">&#8635;</span>
+      <span><strong>Repeating alarms</strong><br>Available to accept and SLA warnings only.</span>
+    </div>
     <div class="sd-row">
       <span class="sd-lbl">Available to accept</span>
       <select id="typeSound_available" onchange="typeSoundMap['available']=this.value; saveState();" style="flex:1;">
@@ -493,10 +499,6 @@
     <div class="sd-row">
       <span class="sd-lbl">SLA warning threshold</span>
       <span class="sd-val">80% elapsed</span>
-    </div>
-    <div class="sd-row">
-      <span class="sd-lbl">Business hours</span>
-      <span class="sd-val">Mon-Fri 09:00-17:00</span>
     </div>
     <div class="sd-row">
       <span class="sd-lbl">Tone repeat</span>
@@ -924,7 +926,11 @@ function closePanel(afterClose) {
     if (typeof afterClose === 'function') afterClose();
   }, 180);
 }
-function toggleSettingsDrawer() { document.getElementById('settingsDrawer').classList.toggle('open'); }
+function toggleSettingsDrawer() {
+  const drawer = document.getElementById('settingsDrawer');
+  drawer.classList.toggle('open');
+  setMouseInteractive(true);
+}
 
 function renderUpdateState(state) {
   const status = document.getElementById('updateStatus');
@@ -971,18 +977,18 @@ function hideBubble() {
 
 function protectRingtoneDropdowns() {
   document.querySelectorAll('#settingsDrawer select').forEach(select => {
-    select.addEventListener('pointerdown', event => {
+    const keepInteractive = event => {
       event.stopPropagation();
       setMouseInteractive(true);
-    }, true);
-    select.addEventListener('mousedown', event => {
-      event.stopPropagation();
-      setMouseInteractive(true);
-    }, true);
+    };
+    select.addEventListener('pointerdown', keepInteractive, true);
+    select.addEventListener('mousedown', keepInteractive, true);
+    select.addEventListener('mouseup', keepInteractive, true);
+    select.addEventListener('click', keepInteractive, true);
     select.addEventListener('focus', () => setMouseInteractive(true));
     select.addEventListener('blur', () => {
       setTimeout(() => {
-        if (!document.querySelector('#settingsDrawer select:focus')) setMouseInteractive(true);
+        setMouseInteractive(true);
       }, 100);
     });
   });
@@ -1641,7 +1647,10 @@ function isPointInPreviewStack(x, y) {
 
 document.addEventListener('mousemove', (e) => {
   if (isDraggingAny) return;
-  if (panelOpen) { setMouseInteractive(true); return; }
+  if (panelOpen || document.getElementById('settingsDrawer').classList.contains('open')) {
+    setMouseInteractive(true);
+    return;
+  }
   setMouseInteractive(isPointInBubbleCircle(e.clientX, e.clientY) || isPointInPreviewStack(e.clientX, e.clientY));
 });
 

@@ -195,9 +195,11 @@ function createWindow() {
     lastBubbleBounds = { x: b.x, y: b.y, width: b.width, height: b.height };
   });
 
-  win.on('blur', reassertAlwaysOnTop);
+  win.on('blur', () => {
+    reassertAlwaysOnTop();
+    if (currentMode === 'rect') win.setIgnoreMouseEvents(false, { forward: true });
+  });
   win.on('show', reassertAlwaysOnTop);
-  setInterval(reassertAlwaysOnTop, 2000);
 
   win.on('closed', () => { win = null; ticketView = null; });
 
@@ -377,7 +379,6 @@ const LOGIN_PAGE_URL = BASE_URL + '/login';
 const NOTIF_ENDPOINT = BASE_URL + '/admin/notifications/dropdown-data';
 const SLA_CACHE_TTL_MS = 30000;
 const SLA_WARNING_PERCENT = 0.8;
-const SLA_BUSINESS_HOURS = { start: 9, end: 17 };
 const ticketSlaCache = new Map();
 
 function sessionFilePath() {
@@ -656,30 +657,6 @@ function parseDurationNearLabel(text, labels) {
   return amount * 24 * 60 * 60 * 1000;
 }
 
-function isBusinessTime(date) {
-  const day = date.getDay();
-  const hour = date.getHours() + date.getMinutes() / 60;
-  return day >= 1 && day <= 5 && hour >= SLA_BUSINESS_HOURS.start && hour < SLA_BUSINESS_HOURS.end;
-}
-
-function addBusinessDuration(start, durationMs) {
-  let cursor = new Date(start.getTime());
-  let remaining = durationMs;
-  while (remaining > 0) {
-    if (!isBusinessTime(cursor)) {
-      cursor.setMinutes(cursor.getMinutes() + 1, 0, 0);
-      continue;
-    }
-    const end = new Date(cursor);
-    end.setHours(SLA_BUSINESS_HOURS.end, 0, 0, 0);
-    const available = Math.min(remaining, end.getTime() - cursor.getTime());
-    cursor = new Date(cursor.getTime() + available);
-    remaining -= available;
-    if (remaining > 0) cursor.setMinutes(cursor.getMinutes() + 1, 0, 0);
-  }
-  return cursor;
-}
-
 function parseSlaKpiCards(html) {
   const cards = [];
   const cardPattern = /<div[^>]*class=["'][^"']*ticket-sla-kpi-card[^"']*["'][^>]*>([\s\S]*?)(?=<div[^>]*class=["'][^"']*ticket-sla-kpi-card|$)/gi;
@@ -770,7 +747,7 @@ function makeSlaAlerts(items, slaByUrl) {
     checks.forEach(([kind, title, parsedDue, durationMs]) => {
       if (kind === 'first_response' && sla.firstResponseComplete) return;
       const start = sla.createdAt || (item.created_at ? new Date(item.created_at) : null);
-      const due = parsedDue || (start && durationMs ? addBusinessDuration(start, durationMs) : null);
+      const due = parsedDue || (start && durationMs ? new Date(start.getTime() + durationMs) : null);
       if (!due || !start || Number.isNaN(start.getTime()) || due <= start) return;
       const warningAt = start.getTime() + (due.getTime() - start.getTime()) * SLA_WARNING_PERCENT;
       const remaining = due.getTime() - now;
@@ -820,12 +797,21 @@ async function getNotificationsInternal() {
     const email = session.email;
     const password = decryptMaybe(session.password);
     if (email && password) {
-      const relogin = await doLogin(email, password);
-      if (relogin.success) {
+      let recovered = false;
+      for (let attempt = 0; attempt < 2 && !recovered; attempt++) {
+        const relogin = await doLogin(email, password);
+        if (!relogin.success) continue;
         session.cookie = relogin.cookie;
         writeSession(session);
         result = await fetchNotifications(relogin.cookie);
-      } else {
+        if (result.rotatedCookie) {
+          session.cookie = result.rotatedCookie;
+          writeSession(session);
+          result = await fetchNotifications(result.rotatedCookie);
+        }
+        recovered = result.code !== 401 && result.code !== 419;
+      }
+      if (!recovered) {
         return { error: true, code: 401, message: 'Session expired, re-login failed' };
       }
     } else {
